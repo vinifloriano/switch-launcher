@@ -14,15 +14,20 @@ RUNNER_LABELS="${RUNNER_LABELS:-macos-arm64:host}"
 RUNNER_HOME="${RUNNER_HOME:-$HOME/.gitea-runner}"
 : "${RUNNER_TOKEN:?Set RUNNER_TOKEN to a runner registration token from Gitea}"
 
-if ! command -v act_runner >/dev/null; then
-    echo "Installing act_runner with Homebrew…"
-    brew install act_runner
+# Homebrew ships the runner as `gitea-runner` (formerly `act_runner`).
+RUNNER_BIN="$(command -v gitea-runner || command -v act_runner || true)"
+if [[ -z "$RUNNER_BIN" ]]; then
+    echo "Installing gitea-runner with Homebrew…"
+    brew install gitea-runner
+    RUNNER_BIN="$(command -v gitea-runner)"
 fi
+# JavaScript actions (actions/checkout, upload-artifact) need node on the host.
+NODE_DIR="$(dirname "$(command -v node || echo /opt/homebrew/bin/node)")"
 
 mkdir -p "$RUNNER_HOME"
 cd "$RUNNER_HOME"
 if [[ ! -f .runner ]]; then
-    act_runner register --no-interactive \
+    "$RUNNER_BIN" register --no-interactive \
         --instance "$GITEA_URL" --token "$RUNNER_TOKEN" \
         --name "$RUNNER_NAME" --labels "$RUNNER_LABELS"
 fi
@@ -35,10 +40,10 @@ cat > "$PLIST" <<PLIST
 <dict>
     <key>Label</key><string>net.parseit.gitea-runner</string>
     <key>ProgramArguments</key>
-    <array><string>$(command -v act_runner)</string><string>daemon</string></array>
+    <array><string>$RUNNER_BIN</string><string>daemon</string></array>
     <key>WorkingDirectory</key><string>$RUNNER_HOME</string>
     <key>EnvironmentVariables</key>
-    <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
+    <dict><key>PATH</key><string>$NODE_DIR:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string></dict>
     <key>RunAtLoad</key><true/>
     <key>KeepAlive</key><true/>
     <key>StandardOutPath</key><string>$RUNNER_HOME/runner.log</string>

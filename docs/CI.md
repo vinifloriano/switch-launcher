@@ -19,7 +19,7 @@ GITEA_URL=https://gitea.parseit.net RUNNER_TOKEN=<token> ./scripts/setup-macos-r
 ```
 
 The token comes from Gitea › Site Administration › Actions › Runners › *Create new runner*.
-The script installs `act_runner` with Homebrew, registers it in host mode and keeps it running
+The script installs `gitea-runner` (formerly `act_runner`) with Homebrew, registers it in host mode and keeps it running
 with a LaunchAgent (`~/Library/LaunchAgents/net.parseit.gitea-runner.plist`).
 
 ## GitHub
