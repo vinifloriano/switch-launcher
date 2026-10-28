@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key><string>Switch Launcher</string>
+    <key>CFBundleName</key><string>Switch Launcher</string>
+    <key>CFBundleExecutable</key><string>SwitchLauncher</string>
+    <key>CFBundleIdentifier</key><string>dev.vinicius.switchlauncher</string>
+    <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
+    <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>NSHighResolutionCapable</key><true/>
+    <key>NSHumanReadableCopyright</key><string>© 2026 Vinicius Floriano. Not affiliated with Nintendo.</string>
+    <key>NSDocumentsFolderUsageDescription</key><string>Switch Launcher looks for your game apps in folders you add to the library, such as Documents/Switch/apps.</string>
+    <key>NSDesktopFolderUsageDescription</key><string>Switch Launcher shows screenshots from your Desktop in the Album.</string>
+    <key>GCSupportsControllerUserInteraction</key><true/>
+    <key>GCSupportedGameControllers</key>
+    <array><dict><key>ProfileName</key><string>ExtendedGamepad</string></dict></array>
+</dict>
+</plist>
