@@ -50,7 +50,7 @@ public struct StoreGame: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// Where the store lives and how to sign in. For MinIO the username and password are the user's
+/// Where the store lives and how to sign in. For S3 servers the username and password are the
 /// access key and secret key.
 public struct StoreConfig: Codable, Equatable, Sendable {
     /// Home-network address, tried first (e.g. `http://192.168.1.10:30900`).

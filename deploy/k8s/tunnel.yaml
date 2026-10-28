@@ -1,4 +1,4 @@
-# Cloudflare tunnel for the game store, so the launcher can reach MinIO from anywhere.
+# Cloudflare tunnel for the game store, so the launcher can reach the store from anywhere.
 # Its credentials live in the `tunnel-credentials` Secret (credentials.json), created by
 # deploy/setup-store.sh from `cloudflared tunnel create switch-store`.
 apiVersion: v1
@@ -14,7 +14,7 @@ data:
     metrics: 0.0.0.0:2000
     ingress:
       - hostname: games.parseit.net
-        service: http://minio.switch-store.svc.cluster.local:9000
+        service: http://store.switch-store.svc.cluster.local:8333
         originRequest:
           # Large game downloads: keep slow connections open.
           connectTimeout: 30s

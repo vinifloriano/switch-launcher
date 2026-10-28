@@ -4,7 +4,7 @@ The launcher's **Game Store** (the eShop button on the HOME Menu) lists games fr
 S3-compatible bucket and installs them on this Mac.
 
 ```
-store-publish ──(LAN)──▶ MinIO bucket `switch-games` ◀──(LAN or Cloudflare tunnel)── Game Store
+store-publish ──(LAN)──▶ SeaweedFS bucket `switch-games` ◀──(LAN or Cloudflare tunnel)── Game Store
   aa archive | multipart       catalog.json                         download → SHA-256 → aa extract
                                games/<slug>/<slug>-<version>.aar
                                games/<slug>/icon.png
@@ -16,10 +16,13 @@ store-publish ──(LAN)──▶ MinIO bucket `switch-games` ◀──(LAN or 
 ./deploy/setup-store.sh
 ```
 
-It deploys MinIO to Kubernetes (`deploy/k8s/minio.yaml`, data on the `nfs-client` TrueNAS class,
-LAN port `30900`), creates the `switch-games` bucket, an admin login for publishing and a read-only
-`launcher` login, and a dedicated Cloudflare tunnel (`deploy/k8s/tunnel.yaml`) for
-`https://games.parseit.net`. The generated logins are kept in `~/.config/switch-store/store.env`.
+It deploys SeaweedFS, an S3-compatible server, to Kubernetes (`deploy/k8s/store.yaml`, data on the
+`nfs-client` TrueNAS class, LAN port `30900`). It creates the `switch-games` bucket, an admin login
+for publishing and a read-only `launcher` login, plus a dedicated Cloudflare tunnel
+(`deploy/k8s/tunnel.yaml`) for `https://games.parseit.net`. The generated logins are kept in
+`~/.config/switch-store/store.env`.
+
+MinIO was the first choice, but it no longer publishes container images.
 
 ## Publishing games
 

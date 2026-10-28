@@ -42,7 +42,7 @@ extension AppModel {
         }
         return MenuSection(
             id: "store", title: "Store", symbol: "bag.fill",
-            footnote: "Your own S3-compatible server (MinIO, AWS S3, R2…) that the Game Store downloads from. The password is saved in the launcher's settings file, readable only by your user.",
+            footnote: "Your own S3-compatible server (SeaweedFS, MinIO, AWS S3, R2…) that the Game Store downloads from. The password is saved in the launcher's settings file, readable only by your user.",
             items: [
                 MenuItem(id: "storeStatus", title: "Status", kind: .info(status)),
                 edit("storeLocal", "Home Network Address", config.localEndpoint, placeholder: "e.g. http://192.168.1.10:30900",
@@ -52,7 +52,7 @@ extension AppModel {
                 edit("storeBucket", "Bucket", config.bucket, placeholder: "switch-games",
                      message: "Name of the bucket that holds catalog.json and the games.", \.bucket),
                 edit("storeUser", "Username", config.username, placeholder: "Not set",
-                     message: "Your store username (for MinIO, the access key).", \.username),
+                     message: "Your store username (the S3 access key).", \.username),
                 MenuItem(id: "storePassword", title: "Password", subtitle: config.password.isEmpty ? "Not set" : "Saved",
                          symbol: "key.fill", kind: .action { [unowned self] in
                     guard let password = promptText("Password", message: "Password for \(settings.value.store.username.isEmpty ? "the store" : settings.value.store.username).", secure: true),

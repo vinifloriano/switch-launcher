@@ -1,6 +1,6 @@
 #!/bin/bash
 # Sets up the Game Store server on the homelab:
-#   1. MinIO in the `switch-store` namespace (data on the TrueNAS NFS class), LAN port 30900
+#   1. SeaweedFS (S3) in the `switch-store` namespace (data on the TrueNAS NFS class), LAN port 30900
 #   2. bucket `switch-games`, an admin login for publishing and a read-only `launcher` login
 #   3. a dedicated Cloudflare tunnel `switch-store` → https://games.parseit.net
 # Logins are generated once and kept in ~/.config/switch-store/store.env (owner-only).
@@ -36,26 +36,32 @@ chmod 600 "$ENV_FILE"
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-# 2. MinIO
-echo "▸ MinIO"
-kubectl apply -f - < k8s/minio.yaml
-kubectl -n switch-store create secret generic minio-root \
-    --from-literal=MINIO_ROOT_USER="$STORE_ADMIN_USER" \
-    --from-literal=MINIO_ROOT_PASSWORD="$STORE_ADMIN_PASSWORD" \
-    --dry-run=client -o yaml | kubectl apply -f -
-kubectl -n switch-store rollout status deploy/minio --timeout=300s
+# 2. S3 server
+echo "▸ SeaweedFS"
+S3_JSON=$(cat <<JSON
+{"identities":[
+  {"name":"$STORE_ADMIN_USER","credentials":[{"accessKey":"$STORE_ADMIN_USER","secretKey":"$STORE_ADMIN_PASSWORD"}],
+   "actions":["Admin","Read","List","Tagging","Write"]},
+  {"name":"$STORE_USER","credentials":[{"accessKey":"$STORE_USER","secretKey":"$STORE_PASSWORD"}],
+   "actions":["Read:$BUCKET","List:$BUCKET"]}
+]}
+JSON
+)
+# Replaced by SeaweedFS (MinIO no longer publishes images); frees NodePort 30900.
+$SSH "$K8S" "kubectl get ns switch-store >/dev/null 2>&1 && kubectl -n switch-store delete deploy/minio svc/minio secret/minio-root --ignore-not-found || true"
+kubectl apply -f - < k8s/store.yaml
+printf '%s' "$S3_JSON" | $SSH "$K8S" "kubectl -n switch-store create secret generic store-s3-config --from-file=s3.json=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -"
+kubectl -n switch-store rollout restart deploy/seaweedfs
+kubectl -n switch-store rollout status deploy/seaweedfs --timeout=300s
 
-echo "▸ Bucket and read-only launcher login"
-POLICY='{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetObject","s3:ListBucket","s3:GetBucketLocation"],"Resource":["arn:aws:s3:::'"$BUCKET"'","arn:aws:s3:::'"$BUCKET"'/*"]}]}'
-# The MinIO image ships the `mc` client.
-kubectl -n switch-store exec deploy/minio -- sh -c "
-    mc alias set store http://127.0.0.1:9000 '$STORE_ADMIN_USER' '$STORE_ADMIN_PASSWORD' >/dev/null &&
-    mc mb --ignore-existing store/$BUCKET &&
-    echo '$POLICY' > /tmp/launcher-read.json &&
-    (mc admin policy create store launcher-read /tmp/launcher-read.json >/dev/null || true) &&
-    mc admin user add store '$STORE_USER' '$STORE_PASSWORD' >/dev/null &&
-    (mc admin policy attach store launcher-read --user '$STORE_USER' >/dev/null 2>&1 || true) &&
-    echo 'bucket and launcher login ready'"
+echo "▸ Bucket"
+for _ in $(seq 1 30); do
+    if kubectl -n switch-store exec deploy/seaweedfs -- sh -c "echo 's3.bucket.create -name $BUCKET' | weed shell -master=localhost:9333" 2>&1 | grep -qiE "created|exist"; then
+        break
+    fi
+    sleep 5
+done
+kubectl -n switch-store exec deploy/seaweedfs -- sh -c "echo 's3.bucket.list' | weed shell -master=localhost:9333"
 
 # 3. Cloudflare tunnel
 echo "▸ Cloudflare tunnel → https://$HOSTNAME_PUBLIC"
@@ -65,7 +71,9 @@ if ! has_tunnel; then
     $SSH "$PROXMOX" "$CF tunnel create switch-store" >/dev/null
 fi
 TUNNEL_ID=$($SSH "$PROXMOX" "$CF tunnel list -o json" | python3 -c 'import json,sys; print(next(t["id"] for t in json.load(sys.stdin) if t["name"]=="switch-store"))')
-$SSH "$PROXMOX" "$CF tunnel route dns switch-store $HOSTNAME_PUBLIC" || true
+# Pass the tunnel ID with an empty config: the container's own config.yml names another tunnel,
+# and cloudflared would otherwise route the hostname there.
+$SSH "$PROXMOX" "pct exec $TUNNEL_CT -- sh -c 'printf {} > /tmp/empty-cloudflared.yml && /usr/local/bin/cloudflared tunnel --config /tmp/empty-cloudflared.yml route dns --overwrite-dns $TUNNEL_ID $HOSTNAME_PUBLIC; rm -f /tmp/empty-cloudflared.yml'"
 $SSH "$PROXMOX" "pct exec $TUNNEL_CT -- cat /root/.cloudflared/$TUNNEL_ID.json" \
     | $SSH "$K8S" "kubectl -n switch-store create secret generic tunnel-credentials --from-file=credentials.json=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -"
 sed "s/^    tunnel: switch-store/    tunnel: $TUNNEL_ID/" k8s/tunnel.yaml | kubectl apply -f -

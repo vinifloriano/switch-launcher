@@ -25,7 +25,7 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
   controller or quit the game. Play time is recorded per title.
 - **All Software**: grid with four sort orders, per-title options (information, play activity,
   data management) and Virtual Game Cards to choose what appears on HOME.
-- **Game Store**: browse and install games from your own S3-compatible server (MinIO on the
+- **Game Store**: browse and install games from your own S3-compatible server (SeaweedFS on the
   homelab), over the home network or a Cloudflare tunnel, with resumable downloads and checksum
   verification. See [docs/STORE.md](docs/STORE.md).
 - **Controllers**: player slots with lights and battery, Change Grip/Order (L + R), Find
