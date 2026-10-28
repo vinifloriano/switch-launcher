@@ -154,7 +154,8 @@ final class StoreServiceIntegrationTests: XCTestCase {
             installed.fulfill()
         }
         service.download(game, into: folder)
-        await fulfillment(of: [installed], timeout: 300)
+        let timeout = Double(env["STORE_TEST_TIMEOUT"] ?? "") ?? 300
+        await fulfillment(of: [installed], timeout: timeout)
 
         XCTAssertEqual(service.jobs[game.id], .installed)
         let app = try XCTUnwrap(installedURL)

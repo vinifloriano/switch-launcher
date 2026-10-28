@@ -19,7 +19,7 @@ store-publish ──(LAN)──▶ SeaweedFS bucket `switch-games` ◀──(LAN
 It deploys SeaweedFS, an S3-compatible server, to Kubernetes (`deploy/k8s/store.yaml`, data on the
 `nfs-client` TrueNAS class, LAN port `30900`). It creates the `switch-games` bucket, an admin login
 for publishing and a read-only `launcher` login, plus a dedicated Cloudflare tunnel
-(`deploy/k8s/tunnel.yaml`) for `https://games.parseit.net`. The generated logins are kept in
+(`deploy/k8s/tunnel.yaml`) for `https://games.parseit.net`, served by two `cloudflared` connectors on different nodes. The generated logins are kept in
 `~/.config/switch-store/store.env`.
 
 MinIO was the first choice, but it no longer publishes container images.
@@ -30,8 +30,13 @@ MinIO was the first choice, but it no longer publishes container images.
 source ~/.config/switch-store/store.env
 STORE_PASSWORD=$STORE_ADMIN_PASSWORD swift run -c release store-publish \
     --endpoint http://192.168.1.10:30900 --user "$STORE_ADMIN_USER" \
-    "$HOME/Documents/Switch/apps/Cuphead.app" "/Applications/Games/Super Mario Bros. Wonder.app"
+    --scan "$HOME/Documents/Switch/apps" --scan /Applications/Games --jobs 2
 ```
+
+`--scan` publishes every game the launcher would recognise in a folder; apps can also be listed
+directly. Games already in the store at the same version are skipped (use `--force` to re-upload),
+so an interrupted run can simply be started again. `--jobs` uploads several games at once; their
+catalog updates are written one after another, so none are lost.
 
 Each app is archived with Apple Archive (LZFSE) and streamed into a multipart upload in 64 MB
 parts, so no local copy is written. The catalog entry records the archive's size and SHA-256;

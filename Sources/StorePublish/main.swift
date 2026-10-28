@@ -22,9 +22,17 @@ struct Options {
     var user: String
     var password: String
     var apps: [URL]
+    var scanFolders: [URL] = []
+    var jobs = 1
+    var force = false
 
     static let usage = """
-    usage: store-publish --endpoint URL --user NAME [--bucket NAME] [--region REGION] APP...
+    usage: store-publish --endpoint URL --user NAME [options] [APP...]
+      --scan DIR      also publish every game found in DIR (repeatable)
+      --jobs N        upload N games at once (default 1)
+      --force         re-upload games already in the store at the same version
+      --bucket NAME   default switch-games
+      --region NAME   default us-east-1
       The password is read from STORE_PASSWORD, or asked for.
     """
 
@@ -34,6 +42,9 @@ struct Options {
         var region = "us-east-1"
         var user = ProcessInfo.processInfo.environment["STORE_USER"]
         var apps: [URL] = []
+        var scanFolders: [URL] = []
+        var jobs = 1
+        var force = false
         var iterator = arguments.makeIterator()
         while let argument = iterator.next() {
             switch argument {
@@ -41,17 +52,21 @@ struct Options {
             case "--bucket": bucket = iterator.next() ?? bucket
             case "--region": region = iterator.next() ?? region
             case "--user": user = iterator.next()
+            case "--scan": iterator.next().map { scanFolders.append(URL(fileURLWithPath: $0, isDirectory: true)) }
+            case "--jobs": jobs = max(1, Int(iterator.next() ?? "") ?? 1)
+            case "--force": force = true
             case "-h", "--help": return nil
             default: apps.append(URL(fileURLWithPath: argument))
             }
         }
-        guard let endpoint, let user, !apps.isEmpty else { return nil }
+        guard let endpoint, let user, !(apps.isEmpty && scanFolders.isEmpty) else { return nil }
         var password = ProcessInfo.processInfo.environment["STORE_PASSWORD"]
         if password == nil, let typed = getpass("Password for \(user): ") {
             password = String(cString: typed)
         }
         guard let password, !password.isEmpty else { return nil }
-        return Options(endpoint: endpoint, bucket: bucket, region: region, user: user, password: password, apps: apps)
+        return Options(endpoint: endpoint, bucket: bucket, region: region, user: user, password: password,
+                       apps: apps, scanFolders: scanFolders, jobs: jobs, force: force)
     }
 }
 
@@ -217,38 +232,67 @@ let s3 = S3(
     bucket: options.bucket
 )
 
-var catalog = StoreCatalog()
-do {
-    if let (data, _) = try await s3.send("GET", "catalog.json", allow404: true) {
-        catalog = try JSONDecoder().decode(StoreCatalog.self, from: data)
-    }
-} catch {
-    line("Couldn't read catalog.json: \(error)")
-    exit(1)
-}
-line("Catalog has \(catalog.games.count) games.")
+/// Keeps catalog.json in step with finished uploads. Writes go out one at a time and each carries
+/// every entry finished so far, so parallel uploads can't overwrite each other's entries.
+actor CatalogWriter {
+    private(set) var catalog: StoreCatalog
+    private let s3: S3
+    private var lastWrite: Task<Void, Error>?
 
-var failures = 0
-for app in options.apps {
-    guard let game = GameScanner().game(at: app, requireNativeMarker: false) else {
-        line("✗ \(app.lastPathComponent): not an app bundle")
-        failures += 1
-        continue
+    init(catalog: StoreCatalog, s3: S3) {
+        self.catalog = catalog
+        self.s3 = s3
     }
+
+    func entry(for id: String) -> StoreGame? {
+        catalog.games.first { $0.id == id }
+    }
+
+    /// Adds or replaces the entry and uploads the catalog. Returns the replaced entry.
+    func upsert(_ entry: StoreGame) async throws -> StoreGame? {
+        let previous = catalog.games.first { $0.id == entry.id }
+        catalog.games.removeAll { $0.id == entry.id }
+        catalog.games.append(entry)
+        catalog.games.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+        let before = lastWrite
+        let write = Task {
+            _ = try? await before?.value
+            try await self.put()
+        }
+        lastWrite = write
+        try await write.value
+        return previous
+    }
+
+    private func put() async throws {
+        catalog.updated = ISO8601DateFormatter().string(from: Date())
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try await s3.send("PUT", "catalog.json", body: try encoder.encode(catalog), contentType: "application/json")
+    }
+}
+
+enum Outcome { case published, skipped, failed }
+
+func publish(_ app: URL, _ game: Game, writer: CatalogWriter, force: Bool) async -> Outcome {
     let name = slug(game.title)
     let version = game.version ?? "1"
     let archiveKey = "games/\(name)/\(name)-\(version).aar"
+    if !force, let existing = await writer.entry(for: game.id), existing.version == game.version {
+        line("= \(game.title) \(version) is already in the store")
+        return .skipped
+    }
     line("▸ \(game.title) \(version) → \(archiveKey)")
     do {
         let start = Date()
-        var lastPrint = Date.distantPast
+        var lastPrint = Date()
         let (size, sha) = try await s3.multipartUpload(
             archiveKey, contentType: "application/octet-stream", chunks: archiveChunks(of: app)
         ) { uploaded in
-            if Date().timeIntervalSince(lastPrint) > 2 {
+            if Date().timeIntervalSince(lastPrint) > 30 {
                 lastPrint = Date()
                 let rate = Double(uploaded) / max(Date().timeIntervalSince(start), 1)
-                line("    \(ByteFormatter.string(uploaded)) uploaded · \(ByteFormatter.string(Int64(rate)))/s")
+                line("    \(game.title): \(ByteFormatter.string(uploaded)) · \(ByteFormatter.string(Int64(rate)))/s")
             }
         }
         var iconKey: String?
@@ -261,21 +305,59 @@ for app in options.apps {
             appName: app.lastPathComponent, archive: archiveKey, archiveSize: size,
             installedSize: installedSize(of: app), sha256: sha, icon: iconKey
         )
-        let previous = catalog.games.first { $0.id == entry.id }
-        catalog.games.removeAll { $0.id == entry.id }
-        catalog.games.append(entry)
-        catalog.games.sort { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
-        catalog.updated = ISO8601DateFormatter().string(from: Date())
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try await s3.send("PUT", "catalog.json", body: try encoder.encode(catalog), contentType: "application/json")
-        if let previous, previous.archive != archiveKey {
+        if let previous = try await writer.upsert(entry), previous.archive != archiveKey {
             _ = try? await s3.send("DELETE", previous.archive)
         }
         line("✓ \(game.title): \(ByteFormatter.string(size)) in \(Int(Date().timeIntervalSince(start)))s, sha256 \(sha.prefix(12))…")
+        return .published
     } catch {
         line("✗ \(game.title): \(error)")
-        failures += 1
+        return .failed
     }
 }
+
+var catalog = StoreCatalog()
+do {
+    if let (data, _) = try await s3.send("GET", "catalog.json", allow404: true) {
+        catalog = try JSONDecoder().decode(StoreCatalog.self, from: data)
+    }
+} catch {
+    line("Couldn't read catalog.json: \(error)")
+    exit(1)
+}
+line("Catalog has \(catalog.games.count) games.")
+let writer = CatalogWriter(catalog: catalog, s3: s3)
+
+// Explicit apps, then everything the launcher would recognise in the scanned folders.
+var work: [(URL, Game)] = []
+var seen = Set<String>()
+var failures = 0
+for app in options.apps {
+    guard let game = GameScanner().game(at: app, requireNativeMarker: false) else {
+        line("✗ \(app.lastPathComponent): not an app bundle")
+        failures += 1
+        continue
+    }
+    if seen.insert(game.id).inserted { work.append((app, game)) }
+}
+for game in GameScanner().scan(folders: options.scanFolders, extraApps: []) where seen.insert(game.id).inserted {
+    work.append((game.url, game))
+}
+line("\(work.count) apps to check, \(options.jobs) at a time.")
+
+var counts: [Outcome: Int] = [:]
+await withTaskGroup(of: Outcome.self) { group in
+    var queue = work[...]
+    func startNext() {
+        guard let (app, game) = queue.popFirst() else { return }
+        group.addTask { await publish(app, game, writer: writer, force: options.force) }
+    }
+    for _ in 0..<options.jobs { startNext() }
+    while let outcome = await group.next() {
+        counts[outcome, default: 0] += 1
+        startNext()
+    }
+}
+failures += counts[.failed, default: 0]
+line("Done: \(counts[.published, default: 0]) published, \(counts[.skipped, default: 0]) already there, \(failures) failed. Catalog has \(await writer.catalog.games.count) games.")
 exit(failures == 0 ? 0 : 1)
