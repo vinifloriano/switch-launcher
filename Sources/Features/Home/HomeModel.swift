@@ -35,7 +35,7 @@ public enum DockItem: String, CaseIterable, Identifiable {
         case .online: "Nintendo Switch Online"
         case .gameChat: "GameChat"
         case .news: "News"
-        case .eShop: "Nintendo eShop"
+        case .eShop: "Game Store"
         case .album: "Album"
         case .gameShare: "GameShare"
         case .controllers: "Controllers"
@@ -236,7 +236,7 @@ extension AppModel {
         case .news:
             openWeb("https://www.nintendo.com/us/whatsnew/", item)
         case .eShop:
-            openWeb("https://www.nintendo.com/us/store/", item)
+            push(.store(StoreModel(app: self)))
         case .gameChat, .gameShare:
             sound.play(.error)
             showToast("\(item.title) isn't available on Mac.", symbol: "exclamationmark.bubble.fill")

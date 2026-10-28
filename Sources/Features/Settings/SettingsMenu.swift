@@ -4,17 +4,89 @@ import LauncherCore
 import UniformTypeIdentifiers
 
 extension AppModel {
-    func makeSettingsMenu() -> MenuModel {
-        MenuModel(title: "System Settings", icon: .symbol("gearshape.fill"), app: self) { [unowned self] in
+    /// `startingAt` opens the page on a section (by id), e.g. "store".
+    func makeSettingsMenu(startingAt section: String? = nil) -> MenuModel {
+        let menu = MenuModel(title: "System Settings", icon: .symbol("gearshape.fill"), app: self) { [unowned self] in
             [
                 themesSection,
                 soundSection,
                 librarySection,
+                storeSection,
                 launcherSection,
                 controlsSection,
                 systemSection,
             ]
         }
+        if let section, let index = menu.sections.firstIndex(where: { $0.id == section }) {
+            menu.sectionIndex = index
+        }
+        return menu
+    }
+
+    private var storeSection: MenuSection {
+        let config = settings.value.store
+        func edit(_ id: String, _ title: String, _ value: String, placeholder: String, message: String,
+                  _ keyPath: WritableKeyPath<StoreConfig, String>) -> MenuItem {
+            MenuItem(id: id, title: title, subtitle: value.isEmpty ? placeholder : value, symbol: "pencil",
+                     kind: .action { [unowned self] in
+                guard let text = promptText(title, message: message, value: value) else { return }
+                settings.value.store[keyPath: keyPath] = text
+            })
+        }
+        var status = "Not set up"
+        switch store.state {
+        case .ready: status = "Connected · \(store.catalog.games.count) games"
+        case .loading: status = "Connecting…"
+        case .failed(let error): status = error
+        case .notConfigured: break
+        }
+        return MenuSection(
+            id: "store", title: "Store", symbol: "bag.fill",
+            footnote: "Your own S3-compatible server (MinIO, AWS S3, R2…) that the Game Store downloads from. The password is saved in the launcher's settings file, readable only by your user.",
+            items: [
+                MenuItem(id: "storeStatus", title: "Status", kind: .info(status)),
+                edit("storeLocal", "Home Network Address", config.localEndpoint, placeholder: "e.g. http://192.168.1.10:30900",
+                     message: "Address of the S3 server on your home network. Tried first.", \.localEndpoint),
+                edit("storeRemote", "Remote Address", config.remoteEndpoint, placeholder: "Optional, e.g. https://games.example.net",
+                     message: "Address from anywhere, e.g. through a Cloudflare tunnel. Used when the home address doesn't answer.", \.remoteEndpoint),
+                edit("storeBucket", "Bucket", config.bucket, placeholder: "switch-games",
+                     message: "Name of the bucket that holds catalog.json and the games.", \.bucket),
+                edit("storeUser", "Username", config.username, placeholder: "Not set",
+                     message: "Your store username (for MinIO, the access key).", \.username),
+                MenuItem(id: "storePassword", title: "Password", subtitle: config.password.isEmpty ? "Not set" : "Saved",
+                         symbol: "key.fill", kind: .action { [unowned self] in
+                    guard let password = promptText("Password", message: "Password for \(settings.value.store.username.isEmpty ? "the store" : settings.value.store.username).", secure: true),
+                          !password.isEmpty else { return }
+                    settings.value.store.password = password
+                }),
+                MenuItem(id: "storeFolder", title: "Install Downloads To", subtitle: storeInstallFolder.path,
+                         symbol: "folder.fill", kind: .action { [unowned self] in chooseStoreFolder() }),
+                MenuItem(id: "storeTest", title: "Test Connection", symbol: "bolt.horizontal.circle.fill",
+                         kind: .action { [unowned self] in
+                    Task {
+                        applyStoreConfig()
+                        await store.refresh()
+                        switch store.state {
+                        case .ready: showToast("Connected: \(store.catalog.games.count) games.", symbol: "checkmark.circle.fill")
+                        case .failed(let error): showToast(error, symbol: "exclamationmark.triangle.fill")
+                        default: showToast("Fill in the address, username and password first.", symbol: "info.circle.fill")
+                        }
+                    }
+                }),
+            ]
+        )
+    }
+
+    private func chooseStoreFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        panel.message = "Choose where downloaded games are installed."
+        panel.directoryURL = storeInstallFolder
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        settings.value.store.installFolder = url.path
     }
 
     private var themesSection: MenuSection {

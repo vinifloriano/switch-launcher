@@ -82,6 +82,7 @@ public struct RootView: View {
         case .controllers(let model): ControllersScreen(model: model)
         case .gripOrder(let model): GripOrderScreen(model: model)
         case .controllerTest(let model): ControllerTestScreen(model: model)
+        case .store(let model): StoreScreen(model: model)
         }
     }
 }

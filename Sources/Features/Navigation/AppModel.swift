@@ -23,6 +23,7 @@ public enum Route: Identifiable {
     case controllers(ControllersModel)
     case gripOrder(GripOrderModel)
     case controllerTest(ControllerTestModel)
+    case store(StoreModel)
 
     public var id: ObjectIdentifier { ObjectIdentifier(responder) }
 
@@ -36,6 +37,7 @@ public enum Route: Identifiable {
         case .controllers(let model): model
         case .gripOrder(let model): model
         case .controllerTest(let model): model
+        case .store(let model): model
         }
     }
 }
@@ -55,6 +57,7 @@ public final class AppModel {
     public let launcher = GameLauncher()
     public let status = SystemStatus()
     public let input = InputRouter()
+    public let store = StoreService()
     @ObservationIgnored public let sound = UISoundPlayer()
 
     public private(set) var stack: [Route] = []
@@ -99,6 +102,7 @@ public final class AppModel {
         status.start()
 
         launcher.onSessionEnded = { [weak self] id, seconds in self?.sessionEnded(id, seconds: seconds) }
+        store.onInstalled = { [weak self] game, url in self?.storeInstalled(game, at: url) }
         Task {
             await reloadLibrary()
             openScreenFromLaunchArgument()
@@ -130,6 +134,7 @@ public final class AppModel {
         case "grip": openGripOrder()
         case "quick": toggleQuickSettings()
         case "capture": captureScreenshot()
+        case "store": openDock(.eShop)
         case "last": home.select(home.items.count - 1)
         case "middle": home.select(5)
         case "roundtrip":
@@ -147,6 +152,7 @@ public final class AppModel {
         sound.volume = Float(value.soundVolume)
         input.useNintendoLayout = value.nintendoButtonLayout
         launcher.keepGameInFront = value.keepGameInFront
+        store.configure(value.store)
     }
 
     public func theme(systemIsDark: Bool) -> Theme {
@@ -336,6 +342,70 @@ public final class AppModel {
                 try? await Task.sleep(for: .milliseconds(500))
             }
         }
+    }
+
+    // MARK: Store
+
+    /// Re-reads the store settings (address, username, password).
+    func applyStoreConfig() {
+        store.configure(settings.value.store, force: true)
+    }
+
+    /// Downloads install here: the folder set in Store settings, else the first library folder.
+    var storeInstallFolder: URL {
+        let custom = settings.value.store.installFolder
+        let path = custom.isEmpty ? (settings.value.libraryFolders.first ?? "~/Documents/Switch/apps") : custom
+        return URL(fileURLWithPath: (path as NSString).expandingTildeInPath, isDirectory: true)
+    }
+
+    private func storeInstalled(_ game: StoreGame, at url: URL) {
+        let folder = url.deletingLastPathComponent().path
+        if !settings.value.libraryFolders.contains(folder) {
+            settings.value.libraryFolders.append(folder)
+        }
+        sound.play(.select)
+        showToast("\(game.title) is ready to play.", symbol: "checkmark.circle.fill")
+        Task { await reloadLibrary() }
+    }
+
+    /// Asks for the store username and password together. Returns `false` when cancelled.
+    @discardableResult
+    func promptStoreSignIn() -> Bool {
+        let alert = NSAlert()
+        alert.messageText = "Sign in to the Game Store"
+        alert.informativeText = "Enter your store username and password."
+        let user = NSTextField(frame: NSRect(x: 0, y: 30, width: 300, height: 24))
+        user.placeholderString = "Username"
+        user.stringValue = settings.value.store.username
+        let password = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 300, height: 24))
+        password.placeholderString = "Password"
+        let fields = NSView(frame: NSRect(x: 0, y: 0, width: 300, height: 54))
+        fields.addSubview(user)
+        fields.addSubview(password)
+        alert.accessoryView = fields
+        alert.addButton(withTitle: "Sign In")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = user.stringValue.isEmpty ? user : password
+        guard alert.runModal() == .alertFirstButtonReturn else { return false }
+        settings.value.store.username = user.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.value.store.password = password.stringValue
+        return true
+    }
+
+    /// Asks for one line of text (or a secret) in a small sheet. `nil` when cancelled.
+    func promptText(_ title: String, message: String, value: String = "", secure: Bool = false) -> String? {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        let field = secure ? NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+                           : NSTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        field.stringValue = value
+        alert.accessoryView = field
+        alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+        return field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     public func confirmClose(_ game: Game) {

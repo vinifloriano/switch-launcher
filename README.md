@@ -17,7 +17,7 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 ## Features
 
 - **HOME Menu**: the 12 most recent titles plus All Software, the console's ten round shortcuts
-  (Nintendo Switch Online, GameChat, News, Nintendo eShop, Album, GameShare, Controllers,
+  (Nintendo Switch Online, GameChat, News, Game Store, Album, GameShare, Controllers,
   Virtual Game Cards, System Settings, Sleep Mode), status bar with clock, network and battery,
   and a button guide. Basic White and Basic Black themes, or follow macOS.
 - **Playing**: games open full screen on top of the launcher and get keyboard focus. The launcher
@@ -25,6 +25,9 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
   controller or quit the game. Play time is recorded per title.
 - **All Software**: grid with four sort orders, per-title options (information, play activity,
   data management) and Virtual Game Cards to choose what appears on HOME.
+- **Game Store**: browse and install games from your own S3-compatible server (MinIO on the
+  homelab), over the home network or a Cloudflare tunnel, with resumable downloads and checksum
+  verification. See [docs/STORE.md](docs/STORE.md).
 - **Controllers**: player slots with lights and battery, Change Grip/Order (L + R), Find
   Controllers (vibration), Test Input Devices (live buttons, sticks with movement trails, analog
   triggers) and pairing.
@@ -105,12 +108,13 @@ make dist     # dist/Switch-Launcher-<version>.zip + .sha256
 | Module | What it holds |
 |---|---|
 | `DesignSystem` | Theme tokens, 1280×720 design-grid scaling, reusable console components (`GameTile`, `CircleIconButton`, `StatusBar`, `ButtonGuide`, `ConsoleScaffold`, `ItemRow`, `ConsoleDialog`, `selectionFrame`, …) |
-| `LauncherCore` | `GameScanner`, `GameLibrary`, `GameLauncher` (launch, focus hand-off and guard, play time), `PlayHistory`, `SettingsStore`, `SystemStatus`, `ScreenshotLibrary`, `Log` |
+| `LauncherCore` | `GameScanner`, `GameLibrary`, `GameLauncher` (launch, focus hand-off and guard, play time), `PlayHistory`, `SettingsStore`, `SystemStatus`, `ScreenshotLibrary`, `StoreService` + `S3Signer` (Game Store), `Log` |
+| `store-publish` | Command-line tool that packages apps and uploads them with `catalog.json` to the store bucket |
 | `InputKit` | `InputRouter`: keyboard and controllers → Nintendo buttons, stick repeat, HOME hold, rumble, player lights, live snapshots |
 | `SoundKit` | `UISoundPlayer`: interface sounds synthesized at startup |
 | `Features` | Screens and navigation; two-pane pages share `MenuModel` / `MenuView` |
 
-Launch options for checking screens: `-openScreen settings|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle|roundtrip`,
+Launch options for checking screens: `-openScreen settings|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
 and `-launchGame <title>` to start a game directly.
 
 Logs: `log stream --predicate 'subsystem == "dev.vinicius.switchlauncher"'`.

@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "SwitchLauncher", targets: ["SwitchLauncher"]),
+        .executable(name: "store-publish", targets: ["store-publish"]),
     ],
     targets: [
         // Visual language: theme tokens, scaling, and reusable console-style components.
@@ -22,6 +23,8 @@ let package = Package(
             dependencies: ["DesignSystem", "LauncherCore", "InputKit", "SoundKit"]
         ),
         .executableTarget(name: "SwitchLauncher", dependencies: ["Features"]),
+        // Packages game apps and uploads them with a catalog to the store bucket.
+        .executableTarget(name: "store-publish", dependencies: ["LauncherCore"], path: "Sources/StorePublish"),
         .testTarget(name: "LauncherCoreTests", dependencies: ["LauncherCore"]),
     ],
     swiftLanguageModes: [.v5]

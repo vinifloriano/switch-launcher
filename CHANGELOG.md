@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.0 — 2026-10-28
+
+- **Game Store** (the eShop button): lists games from your own S3-compatible bucket (MinIO on the
+  homelab), downloads with progress and resume, verifies SHA-256, installs with Apple Archive and
+  adds them to the library. Tries the home-network address first, then a remote one (Cloudflare
+  tunnel). Sign in with username and password; settings in System Settings › Store.
+- `store-publish` command-line tool: streams apps as Apple Archives into multipart uploads (no local
+  copy) and maintains `catalog.json` with icons, sizes and checksums.
+- `deploy/setup-store.sh`: MinIO on Kubernetes with TrueNAS NFS storage, a read-only launcher login
+  and a dedicated Cloudflare tunnel.
+- The settings file is now readable by your user only.
+
 ## 1.0.0 — 2026-10-28
 
 First release.

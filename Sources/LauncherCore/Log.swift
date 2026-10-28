@@ -9,4 +9,5 @@ public enum Log {
     public static let launcher = Logger(subsystem: subsystem, category: "launcher")
     public static let focus = Logger(subsystem: subsystem, category: "focus")
     public static let input = Logger(subsystem: subsystem, category: "input")
+    public static let store = Logger(subsystem: subsystem, category: "store")
 }

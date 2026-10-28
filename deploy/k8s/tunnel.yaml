@@ -1,0 +1,55 @@
+# Cloudflare tunnel for the game store, so the launcher can reach MinIO from anywhere.
+# Its credentials live in the `tunnel-credentials` Secret (credentials.json), created by
+# deploy/setup-store.sh from `cloudflared tunnel create switch-store`.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared
+  namespace: switch-store
+data:
+  config.yaml: |
+    tunnel: switch-store
+    credentials-file: /etc/cloudflared/creds/credentials.json
+    no-autoupdate: true
+    metrics: 0.0.0.0:2000
+    ingress:
+      - hostname: games.parseit.net
+        service: http://minio.switch-store.svc.cluster.local:9000
+        originRequest:
+          # Large game downloads: keep slow connections open.
+          connectTimeout: 30s
+          keepAliveTimeout: 120s
+      - service: http_status:404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: switch-store
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: cloudflared }
+  template:
+    metadata:
+      labels: { app: cloudflared }
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2026.10.5
+          args: ["tunnel", "--config", "/etc/cloudflared/config/config.yaml", "run"]
+          livenessProbe:
+            httpGet: { path: /ready, port: 2000 }
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/cloudflared/config, readOnly: true }
+            - { name: creds, mountPath: /etc/cloudflared/creds, readOnly: true }
+      volumes:
+        - name: config
+          configMap: { name: cloudflared }
+        - name: creds
+          secret: { secretName: tunnel-credentials }

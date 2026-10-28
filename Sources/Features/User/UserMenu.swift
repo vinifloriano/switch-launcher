@@ -64,17 +64,10 @@ extension AppModel {
     }
 
     private func editNickname() {
-        let alert = NSAlert()
-        alert.messageText = "Nickname"
-        alert.informativeText = "Enter a nickname of up to 10 characters."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
-        field.stringValue = settings.value.userName
-        alert.accessoryView = field
-        alert.addButton(withTitle: "OK")
-        alert.addButton(withTitle: "Cancel")
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = String(field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines).prefix(10))
+        guard let text = promptText("Nickname", message: "Enter a nickname of up to 10 characters.",
+                                    value: settings.value.userName) else { return }
+        let name = String(text.prefix(10))
         if !name.isEmpty { settings.value.userName = name }
     }
+
 }

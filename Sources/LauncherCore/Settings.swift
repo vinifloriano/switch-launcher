@@ -31,6 +31,8 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
     public var playInFullScreen = true
     /// Gives focus back to the game when a background app takes it.
     public var keepGameInFront = true
+    /// The game store bucket and sign-in.
+    public var store = StoreConfig()
     public var homeButtonReturnsToLauncher = true
     public var nintendoButtonLayout = true
 
@@ -70,6 +72,7 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
         hideWhilePlaying = value(.hideWhilePlaying, d.hideWhilePlaying)
         playInFullScreen = value(.playInFullScreen, d.playInFullScreen)
         keepGameInFront = value(.keepGameInFront, d.keepGameInFront)
+        store = value(.store, d.store)
         homeButtonReturnsToLauncher = value(.homeButtonReturnsToLauncher, d.homeButtonReturnsToLauncher)
         nintendoButtonLayout = value(.nintendoButtonLayout, d.nintendoButtonLayout)
     }
@@ -111,5 +114,8 @@ public final class SettingsStore {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? encoder.encode(value) else { return }
         try? data.write(to: fileURL, options: .atomic)
+        // Holds the store password: readable by this user only.
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
+
 }
