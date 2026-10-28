@@ -43,6 +43,10 @@ public final class StoreService {
     @ObservationIgnored private var tasks: [String: URLSessionDownloadTask] = [:]
     @ObservationIgnored private var resumeData: [String: Data] = [:]
     @ObservationIgnored private var pending: [String: (StoreGame, URL)] = [:]
+    @ObservationIgnored private var attempts: [String: Int] = [:]
+    /// Long downloads through a proxy (e.g. a Cloudflare tunnel) can be cut mid-stream; each cut
+    /// resumes from where it stopped, up to this many times.
+    static let maxResumes = 5
 
     public init() {
         delegate = DownloadDelegate(owner: self)
@@ -117,6 +121,13 @@ public final class StoreService {
 
     public func download(_ game: StoreGame, into folder: URL) {
         guard !(jobs[game.id]?.isActive ?? false) else { return }
+        attempts[game.id] = 0
+        jobs[game.id] = .downloading(received: 0, total: game.archiveSize)
+        Log.store.info("Downloading \(game.title, privacy: .public)")
+        startTask(game, into: folder)
+    }
+
+    private func startTask(_ game: StoreGame, into folder: URL) {
         let task: URLSessionDownloadTask
         if let data = resumeData.removeValue(forKey: game.id) {
             task = session.downloadTask(withResumeData: data)
@@ -130,8 +141,6 @@ public final class StoreService {
         task.taskDescription = game.id
         tasks[game.id] = task
         pending[game.id] = (game, folder)
-        jobs[game.id] = .downloading(received: 0, total: game.archiveSize)
-        Log.store.info("Downloading \(game.title, privacy: .public)")
         task.resume()
     }
 
@@ -140,6 +149,7 @@ public final class StoreService {
         task.cancel { _ in }
         pending[id] = nil
         resumeData[id] = nil
+        attempts[id] = nil
         jobs[id] = nil
     }
 
@@ -176,6 +186,17 @@ public final class StoreService {
         tasks[id] = nil
         if let data { resumeData[id] = data }
         if (error as NSError).code == NSURLErrorCancelled, jobs[id] == nil { return }
+        let attempt = (attempts[id] ?? 0) + 1
+        if attempt <= Self.maxResumes, let (game, folder) = pending[id] {
+            attempts[id] = attempt
+            Log.store.info("\(game.title, privacy: .public): connection dropped (\(error.localizedDescription, privacy: .public)); \(data == nil ? "restarting" : "resuming", privacy: .public), attempt \(attempt)")
+            Task {
+                try? await Task.sleep(for: .seconds(2 * attempt))
+                guard pending[id] != nil, tasks[id] == nil else { return }
+                startTask(game, into: folder)
+            }
+            return
+        }
         fail(id, error.localizedDescription)
     }
 
@@ -189,6 +210,7 @@ public final class StoreService {
         Log.store.error("\(id, privacy: .public): \(message, privacy: .public)")
         jobs[id] = .failed(message)
         pending[id] = nil
+        attempts[id] = nil
     }
 
     private func install(_ game: StoreGame, archive: URL, folder: URL, staging: URL) async {
@@ -249,6 +271,7 @@ public final class StoreService {
         try? FileManager.default.removeItem(at: archive)
         try? FileManager.default.removeItem(at: staging)   // only succeeds once it's empty
         pending[game.id] = nil
+        attempts[game.id] = nil
         jobs[game.id] = .installed
         Log.store.info("Installed \(game.title, privacy: .public) to \(destination.path, privacy: .public)")
         onInstalled?(game, destination)

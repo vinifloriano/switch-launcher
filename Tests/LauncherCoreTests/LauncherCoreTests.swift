@@ -147,16 +147,24 @@ final class StoreServiceIntegrationTests: XCTestCase {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
 
-        let installed = expectation(description: "installed")
         var installedURL: URL?
-        service.onInstalled = { _, url in
-            installedURL = url
-            installed.fulfill()
-        }
+        service.onInstalled = { _, url in installedURL = url }
         service.download(game, into: folder)
-        let timeout = Double(env["STORE_TEST_TIMEOUT"] ?? "") ?? 300
-        await fulfillment(of: [installed], timeout: timeout)
-
+        // Finish as soon as the job installs or fails, instead of waiting for a timeout.
+        let deadline = Date().addingTimeInterval(Double(env["STORE_TEST_TIMEOUT"] ?? "") ?? 300)
+        while Date() < deadline {
+            switch service.jobs[game.id] {
+            case .installed?, .failed?: break
+            default:
+                try await Task.sleep(for: .milliseconds(250))
+                continue
+            }
+            break
+        }
+        if case .failed(let message)? = service.jobs[game.id] {
+            XCTFail("Download failed: \(message)")
+            return
+        }
         XCTAssertEqual(service.jobs[game.id], .installed)
         let app = try XCTUnwrap(installedURL)
         XCTAssertEqual(app.lastPathComponent, game.appName)

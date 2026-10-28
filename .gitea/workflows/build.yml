@@ -26,6 +26,11 @@ jobs:
         run: swift test
 
       - name: Build and package
+        # Developer ID signing/notarization when the repository variables are set (docs/SIGNING.md);
+        # the certificate and notary profile live in this runner Mac's login keychain.
+        env:
+          SIGN_IDENTITY: ${{ vars.SIGN_IDENTITY }}
+          NOTARY_PROFILE: ${{ vars.NOTARY_PROFILE }}
         run: ./scripts/build-app.sh --dist
 
       - name: Upload artifact

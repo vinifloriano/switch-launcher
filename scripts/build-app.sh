@@ -2,6 +2,11 @@
 # Builds "Switch Launcher.app" into ./build.
 #   --install   also copy it to /Applications
 #   --dist      also create dist/Switch-Launcher-<version>.zip and its .sha256
+#
+# Signing (optional, see docs/SIGNING.md):
+#   SIGN_IDENTITY="Developer ID Application: Name (TEAMID)"   sign for distribution (hardened runtime)
+#   NOTARY_PROFILE=switch-launcher                             with --dist: notarize and staple
+# Without SIGN_IDENTITY the app is ad-hoc signed, which macOS warns about when downloaded.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -42,17 +47,34 @@ for s in 16 32 128 256 512; do
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 
-# Ad-hoc signature, but with a designated requirement on the bundle id only, so macOS privacy
-# answers (e.g. access to Documents) are kept across rebuilds instead of being asked again.
-codesign --force --sign - --requirements '=designated => identifier "dev.vinicius.switchlauncher"' "$APP"
-codesign --verify "$APP"
-echo "Built $APP ($VERSION build $BUILD_NUMBER, $COMMIT)"
+if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+    # Developer ID: hardened runtime and a secure timestamp, both required for notarization.
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+else
+    # Ad-hoc signature, but with a designated requirement on the bundle id only, so macOS privacy
+    # answers (e.g. access to Documents) are kept across rebuilds instead of being asked again.
+    codesign --force --sign - --requirements '=designated => identifier "dev.vinicius.switchlauncher"' "$APP"
+fi
+codesign --verify --strict "$APP"
+echo "Built $APP ($VERSION build $BUILD_NUMBER, $COMMIT, signed by ${SIGN_IDENTITY:-ad-hoc})"
+
+package() {
+    rm -f "$ZIP"
+    ditto -c -k --keepParent "$APP" "$ZIP"
+}
 
 if [[ $DIST == 1 ]]; then
     mkdir -p dist
     ZIP="dist/Switch-Launcher-$VERSION.zip"
-    rm -f "$ZIP"
-    ditto -c -k --keepParent "$APP" "$ZIP"
+    package
+    if [[ -n "${NOTARY_PROFILE:-}" ]]; then
+        [[ -n "${SIGN_IDENTITY:-}" ]] || { echo "NOTARY_PROFILE needs SIGN_IDENTITY" >&2; exit 2; }
+        echo "Notarizing (this usually takes a few minutes)…"
+        xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
+        xcrun stapler staple "$APP"
+        package   # re-zip so the download carries the stapled ticket
+        spctl --assess --type execute --verbose "$APP"
+    fi
     (cd dist && shasum -a 256 "$(basename "$ZIP")" > "$(basename "$ZIP").sha256")
     echo "Packaged $ZIP"
 fi
