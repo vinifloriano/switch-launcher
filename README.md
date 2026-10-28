@@ -38,9 +38,20 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 
 ## Install
 
-Download `Switch-Launcher-<version>.zip` from the releases page, unzip, and move
-**Switch Launcher.app** to `/Applications`. The app is ad-hoc signed, so the first time,
-right-click it and choose **Open**.
+1. Download `Switch-Launcher-<version>.zip` from the
+   [latest release](https://github.com/vinifloriano/switch-launcher/releases/latest)
+   (under **Assets**). The `.sha256` file next to it lets you check the download:
+   `shasum -a 256 -c Switch-Launcher-<version>.zip.sha256`.
+2. Unzip it and move **Switch Launcher.app** to `/Applications`.
+3. Open it. The app is ad-hoc signed, not notarized by Apple, so macOS blocks it the first time.
+   On macOS 15 and later, right-click › Open no longer gets past this. Instead:
+   - try to open the app once, then go to **System Settings › Privacy & Security** and click
+     **Open Anyway** next to the message about Switch Launcher, or
+   - clear the download flag in Terminal:
+
+     ```bash
+     xattr -dr com.apple.quarantine "/Applications/Switch Launcher.app"
+     ```
 
 Or build it yourself:
 
