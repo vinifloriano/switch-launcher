@@ -5,9 +5,12 @@
 //       --endpoint http://192.168.1.10:30900 --user switchadmin [--bucket switch-games] \
 //       "/path/Game One.app" "/path/Game Two.app"
 //
+//   swift run -c release store-publish --to "/Volumes/games/Switch Store/switch-games" --scan DIR
+//
 // Each app is archived with Apple Archive (LZFSE) and streamed straight into a multipart upload,
 // so no local copy is written (games are often bigger than the free space). The password comes
-// from STORE_PASSWORD or is asked for.
+// from STORE_PASSWORD or is asked for. With --to the same files are written into the bucket's
+// folder instead (e.g. a NAS share the store's S3 gateway serves), and no login is needed.
 
 import CryptoKit
 import Foundation
@@ -16,11 +19,10 @@ import LauncherCore
 import UniformTypeIdentifiers
 
 struct Options {
-    var endpoint: URL
+    enum Target { case s3(endpoint: URL, user: String, password: String), folder(URL) }
+    var target: Target
     var bucket = "switch-games"
     var region = "us-east-1"
-    var user: String
-    var password: String
     var apps: [URL]
     var scanFolders: [URL] = []
     var jobs = 1
@@ -29,7 +31,8 @@ struct Options {
     var maxRate: Double?
 
     static let usage = """
-    usage: store-publish --endpoint URL --user NAME [options] [APP...]
+    usage: store-publish (--endpoint URL --user NAME | --to DIR) [options] [APP...]
+      --to DIR        write into the bucket's folder (e.g. a mounted NAS share) instead of S3
       --scan DIR      also publish every game found in DIR (repeatable)
       --jobs N        upload N games at once (default 1)
       --force         re-upload games already in the store at the same version
@@ -49,9 +52,11 @@ struct Options {
         var jobs = 1
         var force = false
         var maxRate: Double?
+        var folder: URL?
         var iterator = arguments.makeIterator()
         while let argument = iterator.next() {
             switch argument {
+            case "--to": folder = iterator.next().map { URL(fileURLWithPath: $0, isDirectory: true) }
             case "--endpoint": endpoint = iterator.next().flatMap(URL.init(string:))
             case "--bucket": bucket = iterator.next() ?? bucket
             case "--region": region = iterator.next() ?? region
@@ -64,14 +69,21 @@ struct Options {
             default: apps.append(URL(fileURLWithPath: argument))
             }
         }
-        guard let endpoint, let user, !(apps.isEmpty && scanFolders.isEmpty) else { return nil }
-        var password = ProcessInfo.processInfo.environment["STORE_PASSWORD"]
-        if password == nil, let typed = getpass("Password for \(user): ") {
-            password = String(cString: typed)
+        guard !(apps.isEmpty && scanFolders.isEmpty) else { return nil }
+        let target: Target
+        if let folder {
+            target = .folder(folder)
+        } else {
+            guard let endpoint, let user else { return nil }
+            var password = ProcessInfo.processInfo.environment["STORE_PASSWORD"]
+            if password == nil, let typed = getpass("Password for \(user): ") {
+                password = String(cString: typed)
+            }
+            guard let password, !password.isEmpty else { return nil }
+            target = .s3(endpoint: endpoint, user: user, password: password)
         }
-        guard let password, !password.isEmpty else { return nil }
-        return Options(endpoint: endpoint, bucket: bucket, region: region, user: user, password: password,
-                       apps: apps, scanFolders: scanFolders, jobs: jobs, force: force, maxRate: maxRate)
+        return Options(target: target, bucket: bucket, region: region, apps: apps, scanFolders: scanFolders,
+                       jobs: jobs, force: force, maxRate: maxRate)
     }
 }
 
@@ -81,8 +93,79 @@ struct S3Error: Error, CustomStringConvertible {
     var description: String { "S3 error \(status): \(body.prefix(300))" }
 }
 
+/// Where the publisher writes: the store's S3 bucket, or the folder that holds the bucket's files.
+protocol Store: Sendable {
+    func read(_ key: String) async throws -> Data?
+    func write(_ key: String, _ data: Data, contentType: String) async throws
+    func delete(_ key: String) async throws
+    /// Writes `chunks` to `key`. Returns total size and SHA-256.
+    func writeArchive(_ key: String, chunks: AsyncThrowingStream<Data, Error>, maxRate: Double?,
+                      progress: @escaping (Int64) -> Void) async throws -> (Int64, String)
+}
+
+/// Sleeps as long as needed to keep `total` bytes since `start` under `maxRate` bytes per second.
+func throttle(_ total: Int64, since start: Date, maxRate: Double?) async throws {
+    guard let maxRate else { return }
+    let due = Double(total) / maxRate - Date().timeIntervalSince(start)
+    if due > 0 { try await Task.sleep(for: .seconds(due)) }
+}
+
+/// The bucket's folder, e.g. a NAS share mounted over SMB that the store's S3 gateway serves.
+/// Files are written under a temporary name and renamed when complete, so the store never serves
+/// half-written archives.
+struct FolderStore: Store {
+    let root: URL
+
+    private func url(_ key: String) -> URL { root.appendingPathComponent(key) }
+
+    func read(_ key: String) async throws -> Data? {
+        let file = url(key)
+        guard FileManager.default.fileExists(atPath: file.path) else { return nil }
+        return try Data(contentsOf: file)
+    }
+
+    func write(_ key: String, _ data: Data, contentType: String) async throws {
+        let file = url(key)
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.write(to: file, options: .atomic)
+    }
+
+    func delete(_ key: String) async throws {
+        try? FileManager.default.removeItem(at: url(key))
+    }
+
+    func writeArchive(_ key: String, chunks: AsyncThrowingStream<Data, Error>, maxRate: Double?,
+                      progress: @escaping (Int64) -> Void) async throws -> (Int64, String) {
+        let file = url(key)
+        let partial = file.appendingPathExtension("partial")
+        try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: partial.path, contents: nil)
+        let start = Date()
+        var hasher = SHA256()
+        var total: Int64 = 0
+        do {
+            let handle = try FileHandle(forWritingTo: partial)
+            defer { try? handle.close() }
+            for try await chunk in chunks {
+                hasher.update(data: chunk)
+                try handle.write(contentsOf: chunk)
+                total += Int64(chunk.count)
+                progress(total)
+                try await throttle(total, since: start, maxRate: maxRate)
+            }
+            try handle.synchronize()
+        } catch {
+            try? FileManager.default.removeItem(at: partial)
+            throw error
+        }
+        try? FileManager.default.removeItem(at: file)
+        try FileManager.default.moveItem(at: partial, to: file)
+        return (total, S3Signer.hex(hasher.finalize()))
+    }
+}
+
 /// The few S3 calls the publisher needs, all through presigned URLs.
-struct S3 {
+struct S3: Store {
     let signer: S3Signer
     let endpoint: URL
     let bucket: String
@@ -129,11 +212,7 @@ struct S3 {
                 parts.append((number, etag))
                 total += Int64(chunk.count)
                 progress(total)
-                // Stay under the speed limit: wait until this many bytes are "due".
-                if let maxRate {
-                    let due = Double(total) / maxRate - Date().timeIntervalSince(start)
-                    if due > 0 { try await Task.sleep(for: .seconds(due)) }
-                }
+                try await throttle(total, since: start, maxRate: maxRate)
             }
             let xml = "<CompleteMultipartUpload>" + parts.map {
                 "<Part><PartNumber>\($0.0)</PartNumber><ETag>\($0.1)</ETag></Part>"
@@ -144,6 +223,23 @@ struct S3 {
             throw error
         }
         return (total, S3Signer.hex(hasher.finalize()))
+    }
+
+    func read(_ key: String) async throws -> Data? {
+        try await send("GET", key, allow404: true)?.0
+    }
+
+    func write(_ key: String, _ data: Data, contentType: String) async throws {
+        try await send("PUT", key, body: data, contentType: contentType)
+    }
+
+    func delete(_ key: String) async throws {
+        try await send("DELETE", key)
+    }
+
+    func writeArchive(_ key: String, chunks: AsyncThrowingStream<Data, Error>, maxRate: Double?,
+                      progress: @escaping (Int64) -> Void) async throws -> (Int64, String) {
+        try await multipartUpload(key, contentType: "application/octet-stream", chunks: chunks, maxRate: maxRate, progress: progress)
     }
 
     static func tag(_ name: String, in data: Data) -> String? {
@@ -237,22 +333,28 @@ guard let options = Options.parse(Array(CommandLine.arguments.dropFirst())) else
     FileHandle.standardError.write(Data((Options.usage + "\n").utf8))
     exit(2)
 }
-let s3 = S3(
-    signer: S3Signer(accessKey: options.user, secretKey: options.password, region: options.region),
-    endpoint: options.endpoint,
-    bucket: options.bucket
-)
+let store: any Store
+switch options.target {
+case let .s3(endpoint, user, password):
+    store = S3(signer: S3Signer(accessKey: user, secretKey: password, region: options.region), endpoint: endpoint, bucket: options.bucket)
+case let .folder(root):
+    guard FileManager.default.fileExists(atPath: root.path) else {
+        FileHandle.standardError.write(Data("No such folder: \(root.path)\n".utf8))
+        exit(2)
+    }
+    store = FolderStore(root: root)
+}
 
 /// Keeps catalog.json in step with finished uploads. Writes go out one at a time and each carries
 /// every entry finished so far, so parallel uploads can't overwrite each other's entries.
 actor CatalogWriter {
     private(set) var catalog: StoreCatalog
-    private let s3: S3
+    private let store: any Store
     private var lastWrite: Task<Void, Error>?
 
-    init(catalog: StoreCatalog, s3: S3) {
+    init(catalog: StoreCatalog, store: any Store) {
         self.catalog = catalog
-        self.s3 = s3
+        self.store = store
     }
 
     func entry(for id: String) -> StoreGame? {
@@ -279,7 +381,7 @@ actor CatalogWriter {
         catalog.updated = ISO8601DateFormatter().string(from: Date())
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try await s3.send("PUT", "catalog.json", body: try encoder.encode(catalog), contentType: "application/json")
+        try await store.write("catalog.json", try encoder.encode(catalog), contentType: "application/json")
     }
 }
 
@@ -297,8 +399,8 @@ func publish(_ app: URL, _ game: Game, writer: CatalogWriter, force: Bool) async
     do {
         let start = Date()
         var lastPrint = Date()
-        let (size, sha) = try await s3.multipartUpload(
-            archiveKey, contentType: "application/octet-stream", chunks: archiveChunks(of: app),
+        let (size, sha) = try await store.writeArchive(
+            archiveKey, chunks: archiveChunks(of: app),
             maxRate: options.maxRate.map { $0 / Double(options.jobs) }
         ) { uploaded in
             if Date().timeIntervalSince(lastPrint) > 30 {
@@ -310,7 +412,7 @@ func publish(_ app: URL, _ game: Game, writer: CatalogWriter, force: Bool) async
         var iconKey: String?
         if let png = pngIcon(for: game) {
             iconKey = "games/\(name)/icon.png"
-            try await s3.send("PUT", iconKey!, body: png, contentType: "image/png")
+            try await store.write(iconKey!, png, contentType: "image/png")
         }
         let entry = StoreGame(
             id: game.id, title: game.title, version: game.version, titleID: game.titleID, category: game.category,
@@ -318,7 +420,7 @@ func publish(_ app: URL, _ game: Game, writer: CatalogWriter, force: Bool) async
             installedSize: installedSize(of: app), sha256: sha, icon: iconKey
         )
         if let previous = try await writer.upsert(entry), previous.archive != archiveKey {
-            _ = try? await s3.send("DELETE", previous.archive)
+            try? await store.delete(previous.archive)
         }
         line("✓ \(game.title): \(ByteFormatter.string(size)) in \(Int(Date().timeIntervalSince(start)))s, sha256 \(sha.prefix(12))…")
         return .published
@@ -330,7 +432,7 @@ func publish(_ app: URL, _ game: Game, writer: CatalogWriter, force: Bool) async
 
 var catalog = StoreCatalog()
 do {
-    if let (data, _) = try await s3.send("GET", "catalog.json", allow404: true) {
+    if let data = try await store.read("catalog.json") {
         catalog = try JSONDecoder().decode(StoreCatalog.self, from: data)
     }
 } catch {
@@ -338,7 +440,7 @@ do {
     exit(1)
 }
 line("Catalog has \(catalog.games.count) games.")
-let writer = CatalogWriter(catalog: catalog, s3: s3)
+let writer = CatalogWriter(catalog: catalog, store: store)
 
 // Explicit apps, then everything the launcher would recognise in the scanned folders.
 var work: [(URL, Game)] = []

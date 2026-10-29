@@ -4,8 +4,8 @@ The launcher's **Game Store** (the eShop button on the HOME Menu) lists games fr
 S3-compatible bucket and installs them on this Mac.
 
 ```
-store-publish ──(LAN)──▶ SeaweedFS bucket `switch-games` ◀──(LAN or Cloudflare tunnel)── Game Store
-  aa archive | multipart       catalog.json                         download → SHA-256 → aa extract
+store-publish ──(SMB)──▶ NAS folder = bucket `switch-games` ◀──(S3 gateway: LAN or Cloudflare tunnel)── Game Store
+  aa archive                   catalog.json                                       download → SHA-256 → aa extract
                                games/<slug>/<slug>-<version>.aar
                                games/<slug>/icon.png
 ```
@@ -16,30 +16,42 @@ store-publish ──(LAN)──▶ SeaweedFS bucket `switch-games` ◀──(LAN
 ./deploy/setup-store.sh
 ```
 
-It deploys SeaweedFS, an S3-compatible server, to Kubernetes (`deploy/k8s/store.yaml`, data on the
-`nfs-client` TrueNAS class, LAN port `30900`). It creates the `switch-games` bucket, an admin login
-for publishing and a read-only `launcher` login, plus a dedicated Cloudflare tunnel
-(`deploy/k8s/tunnel.yaml`) for `https://games.parseit.net`, served by two `cloudflared` connectors on different nodes. The generated logins are kept in
-`~/.config/switch-store/store.env`.
+The games live in a plain folder on the TrueNAS,
+`/mnt/MAIN/k8s-volumes/switch-store-games/switch-games` (SMB share `k8s-volumes`). The script
+deploys Versity S3 Gateway (`deploy/k8s/store.yaml`) to Kubernetes. It serves that folder as the
+bucket `switch-games` on LAN port `30900`, with a read-only `launcher` login. It mounts the folder
+read-only over NFS and is kept off k8s-worker3 (see the network adapter notes below), so downloads
+never touch that node. It also sets up a dedicated Cloudflare tunnel (`deploy/k8s/tunnel.yaml`) for
+`https://games.parseit.net`, served by two `cloudflared` connectors on different nodes. The
+generated login is kept in `~/.config/switch-store/store.env`.
 
-MinIO was the first choice, but it no longer publishes container images.
+Earlier versions ran MinIO, then SeaweedFS, which kept the games in its own volume format on an NFS
+volume. Every upload then passed through the node running it, and k8s-worker3's network adapter kept
+cutting them off.
+
+The `vinicius` SMB user needs access to the `k8s-volumes` share. That dataset uses POSIX ACLs, and
+the ACL mask caps every named entry, so the mask on the share's root folder must be `rwx`. With the
+mask at `rw-`, the share refuses the connection ("Permission denied").
 
 ## Publishing games
 
+Mount the `k8s-volumes` share in Finder (`smb://storage01/k8s-volumes`), then:
+
 ```bash
-source ~/.config/switch-store/store.env
-STORE_PASSWORD=$STORE_ADMIN_PASSWORD swift run -c release store-publish \
-    --endpoint http://192.168.1.10:30900 --user "$STORE_ADMIN_USER" \
-    --scan "$HOME/Documents/Switch/apps" --scan /Applications/Games --jobs 2
+swift run -c release store-publish --to /Volumes/k8s-volumes/switch-store-games/switch-games \
+    --scan "$HOME/Documents/Switch/apps" --scan /Applications/Games
 ```
+
+Archives are written under a temporary `.partial` name and renamed when complete, so the store
+never serves a half-written game. Writing to the NAS over SMB ran at 80–110 MB/s.
 
 `--scan` publishes every game the launcher would recognise in a folder; apps can also be listed
 directly. Games already in the store at the same version are skipped (use `--force` to re-upload),
 so an interrupted run can simply be started again. `--jobs` uploads several games at once; their
 catalog updates are written one after another, so none are lost.
 
-`--max-rate MB` caps the upload speed. Send uploads to the node that runs the store pod (currently
-`k8s-worker3`, `http://192.168.1.13:30900`) so they don't also pass through another node.
+`--endpoint URL --user NAME` uploads to any S3 bucket instead (multipart, password from
+`STORE_PASSWORD`). `--max-rate MB` caps the upload speed in either mode.
 
 ### Node network adapters
 
@@ -63,7 +75,7 @@ ping -c3 192.168.1.6 && sudo systemctl stop nic-speed-rollback.timer   # keep it
 
 Then copy the rule to `/etc/udev/rules.d/` and run `sudo udevadm control --reload`.
 
-Each app is archived with Apple Archive (LZFSE) and streamed into a multipart upload in 64 MB
+Each app is archived with Apple Archive (LZFSE) and streamed straight to its destination in 64 MB
 parts, so no local copy is written. The catalog entry records the archive's size and SHA-256;
 publishing a new version replaces the old archive.
 

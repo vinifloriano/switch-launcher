@@ -1,8 +1,10 @@
 #!/bin/bash
 # Sets up the Game Store server on the homelab:
-#   1. SeaweedFS (S3) in the `switch-store` namespace (data on the TrueNAS NFS class), LAN port 30900
-#   2. bucket `switch-games`, an admin login for publishing and a read-only `launcher` login
-#   3. a dedicated Cloudflare tunnel `switch-store` → https://games.parseit.net
+#   1. Versity S3 Gateway in the `switch-store` namespace, serving the NAS folder
+#      /mnt/MAIN/k8s-volumes/switch-store-games/switch-games read-only as bucket `switch-games`,
+#      LAN port 30900, with a read-only `launcher` login
+#   2. a dedicated Cloudflare tunnel `switch-store` → https://games.parseit.net
+# Games are published into that folder over SMB with `store-publish --to` (docs/STORE.md).
 # Logins are generated once and kept in ~/.config/switch-store/store.env (owner-only).
 # Safe to run again: existing logins, tunnel and DNS route are reused.
 set -euo pipefail
@@ -36,32 +38,12 @@ chmod 600 "$ENV_FILE"
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-# 2. S3 server
-echo "▸ SeaweedFS"
-S3_JSON=$(cat <<JSON
-{"identities":[
-  {"name":"$STORE_ADMIN_USER","credentials":[{"accessKey":"$STORE_ADMIN_USER","secretKey":"$STORE_ADMIN_PASSWORD"}],
-   "actions":["Admin","Read","List","Tagging","Write"]},
-  {"name":"$STORE_USER","credentials":[{"accessKey":"$STORE_USER","secretKey":"$STORE_PASSWORD"}],
-   "actions":["Read:$BUCKET","List:$BUCKET"]}
-]}
-JSON
-)
-# Replaced by SeaweedFS (MinIO no longer publishes images); frees NodePort 30900.
-$SSH "$K8S" "kubectl get ns switch-store >/dev/null 2>&1 && kubectl -n switch-store delete deploy/minio svc/minio secret/minio-root --ignore-not-found || true"
+# 2. S3 gateway
+echo "▸ Store gateway"
 kubectl apply -f - < k8s/store.yaml
-printf '%s' "$S3_JSON" | $SSH "$K8S" "kubectl -n switch-store create secret generic store-s3-config --from-file=s3.json=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -"
-kubectl -n switch-store rollout restart deploy/seaweedfs
-kubectl -n switch-store rollout status deploy/seaweedfs --timeout=300s
-
-echo "▸ Bucket"
-for _ in $(seq 1 30); do
-    if kubectl -n switch-store exec deploy/seaweedfs -- sh -c "echo 's3.bucket.create -name $BUCKET' | weed shell -master=localhost:9333" 2>&1 | grep -qiE "created|exist"; then
-        break
-    fi
-    sleep 5
-done
-kubectl -n switch-store exec deploy/seaweedfs -- sh -c "echo 's3.bucket.list' | weed shell -master=localhost:9333"
+printf '%s' "$STORE_PASSWORD" | $SSH "$K8S" "kubectl -n switch-store create secret generic store-gateway --from-literal=access=$STORE_USER --from-file=secret=/dev/stdin --dry-run=client -o yaml | kubectl apply -f -"
+kubectl -n switch-store rollout restart deploy/store-gateway
+kubectl -n switch-store rollout status deploy/store-gateway --timeout=300s
 
 # 3. Cloudflare tunnel
 echo "▸ Cloudflare tunnel → https://$HOSTNAME_PUBLIC"
@@ -87,5 +69,5 @@ cat <<EOF
   Remote address:       https://$HOSTNAME_PUBLIC
   Bucket:               $BUCKET
   Launcher login:       $STORE_USER  (password in $ENV_FILE)
-  Publishing login:     $STORE_ADMIN_USER  (password in $ENV_FILE)
+  Publish with:         store-publish --to <SMB mount of k8s-volumes>/switch-store-games/$BUCKET
 EOF

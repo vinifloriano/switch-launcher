@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Store server**: SeaweedFS is replaced by a Versity S3 Gateway that serves a TrueNAS folder
+  read-only. Games no longer pass through the cluster's worker disks.
+- `store-publish --to DIR`: publishes into a folder (such as the NAS share mounted over SMB) instead
+  of uploading over S3. It writes each archive to a `.partial` file first, then moves it into place.
+
 ## 1.1.0 — 2026-10-28
 
 - **Game Store** (the eShop button): lists games from your own S3-compatible bucket (SeaweedFS on the
