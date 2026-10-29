@@ -294,6 +294,11 @@ extension AppModel {
             id: "system", title: "System", symbol: "info.circle.fill",
             items: [
                 MenuItem(id: "version", title: "Launcher Version", kind: .info(version)),
+                MenuItem(id: "update", title: "Software Update", subtitle: updateStatus,
+                         symbol: updates.availableRelease == nil ? "arrow.clockwise.circle.fill" : "arrow.down.circle.fill",
+                         kind: .action { [unowned self] in openSoftwareUpdate() }),
+                toggle("autoUpdate", "Check for Updates Automatically", \.checkForUpdates,
+                       subtitle: "Looks for a new release on GitHub at startup and every 6 hours."),
                 MenuItem(id: "software", title: "Installed Software", kind: .info("\(library.games.count)")),
                 MenuItem(id: "data", title: "Data Folder", subtitle: AppPaths.supportDirectory.path, symbol: "folder",
                          kind: .action { NSWorkspace.shared.open(AppPaths.supportDirectory) }),
@@ -303,6 +308,17 @@ extension AppModel {
                          kind: .action { NSApp.terminate(nil) }),
             ]
         )
+    }
+
+    private var updateStatus: String {
+        switch updates.state {
+        case .available(let release): return "Version \(release.version) is available. Select to download."
+        case .checking: return "Checking…"
+        case .failed(let message): return message
+        case .upToDate, .idle:
+            guard let checked = updates.lastChecked else { return "Select to check for a new version." }
+            return "Up to date · checked \(checked.formatted(date: .omitted, time: .shortened))"
+        }
     }
 
     private func toggle(

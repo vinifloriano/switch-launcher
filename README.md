@@ -116,7 +116,7 @@ make dist     # dist/Switch-Launcher-<version>.zip + .sha256
 | `SoundKit` | `UISoundPlayer`: interface sounds synthesized at startup |
 | `Features` | Screens and navigation; two-pane pages share `MenuModel` / `MenuView` |
 
-Launch options for checking screens: `-openScreen settings|data|saves|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
+Launch options for checking screens: `-openScreen settings|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
 and `-launchGame <title>` to start a game directly.
 
 Logs: `log stream --predicate 'subsystem == "dev.vinicius.switchlauncher"'`.

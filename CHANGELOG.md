@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 — 2026-10-29
+
+- **Software Update** in System Settings › System: checks GitHub for a newer release at startup and
+  every 6 hours (Check for Updates Automatically turns it off), says so once with a message, and
+  offers to open the new version's download or its release notes.
+- Software sizes are saved between launches (`app-sizes.json`), so Data Management shows them right
+  away. An app is measured again only when it's moved, updated or replaced; save data is refreshed
+  in the background.
+
 ## 1.3.0 — 2026-10-29
 
 - **Save Data** in System Settings: every title's save data on this Mac, installed or not, with its

@@ -35,6 +35,8 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
     public var store = StoreConfig()
     public var homeButtonReturnsToLauncher = true
     public var nintendoButtonLayout = true
+    /// Look for a newer launcher release on GitHub at startup and every few hours.
+    public var checkForUpdates = true
 
     public init() {}
 
@@ -75,6 +77,7 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
         store = value(.store, d.store)
         homeButtonReturnsToLauncher = value(.homeButtonReturnsToLauncher, d.homeButtonReturnsToLauncher)
         nintendoButtonLayout = value(.nintendoButtonLayout, d.nintendoButtonLayout)
+        checkForUpdates = value(.checkForUpdates, d.checkForUpdates)
     }
 }
 

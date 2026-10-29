@@ -210,9 +210,67 @@ final class StorageUsageTests: XCTestCase {
         XCTAssertEqual(StorageUsage.keyFile(for: app).path, "/Games/Mario Kart 8.app.key")
     }
 
+    @MainActor
+    func testReusesCachedAppSizeUntilTheAppChanges() async throws {
+        let app = folder.appendingPathComponent("Game.app", isDirectory: true)
+        let contents = app.appendingPathComponent("Contents")
+        try FileManager.default.createDirectory(at: contents, withIntermediateDirectories: true)
+        try Data("plist".utf8).write(to: contents.appendingPathComponent("Info.plist"))
+        try Data(count: 200_000).write(to: contents.appendingPathComponent("game.bin"))
+        let game = Game(id: "g", title: "Game", url: app, version: "1.0")
+        let cache = folder.appendingPathComponent("sizes.json")
+
+        func measured(_ storage: StorageUsage) async -> Int64? {
+            storage.measure([game])
+            while storage.isMeasuring { await Task.yield() }
+            return storage.software[game.id]?.app
+        }
+        let measuredFirst = await measured(StorageUsage(sizesFile: cache))
+        let first = try XCTUnwrap(measuredFirst)
+        XCTAssertGreaterThanOrEqual(first, 200_000)
+
+        // Content changed but the app wasn't updated: a new session uses the cached size.
+        try Data(count: 900_000).write(to: contents.appendingPathComponent("game.bin"))
+        let cached = await measured(StorageUsage(sizesFile: cache))
+        XCTAssertEqual(cached, first)
+
+        // A new version is measured again.
+        let updated = Game(id: "g", title: "Game", url: app, version: "1.1")
+        let storage = StorageUsage(sizesFile: cache)
+        storage.measure([updated])
+        while storage.isMeasuring { await Task.yield() }
+        XCTAssertGreaterThanOrEqual(try XCTUnwrap(storage.software["g"]?.app), 900_000)
+    }
+
     func testReportsTheVolume() throws {
         let volume = try XCTUnwrap(StorageUsage.volume(for: folder))
         XCTAssertGreaterThan(volume.total, 0)
         XCTAssertLessThanOrEqual(volume.available, volume.total)
+    }
+}
+
+final class UpdateCheckerTests: XCTestCase {
+    func testComparesVersionsNumerically() {
+        XCTAssertTrue(UpdateChecker.isNewer("1.4.0", than: "1.3.0"))
+        XCTAssertTrue(UpdateChecker.isNewer("1.10.0", than: "1.9.2"))
+        XCTAssertTrue(UpdateChecker.isNewer("2.0", than: "1.99.99"))
+        XCTAssertTrue(UpdateChecker.isNewer("1.3.1", than: "1.3"))
+        XCTAssertFalse(UpdateChecker.isNewer("1.3.0", than: "1.3.0"))
+        XCTAssertFalse(UpdateChecker.isNewer("1.3", than: "1.3.0"))
+        XCTAssertFalse(UpdateChecker.isNewer("1.2.9", than: "1.3.0"))
+    }
+
+    func testReadsGitHubRelease() throws {
+        let json = """
+        {"tag_name": "v1.4.0", "html_url": "https://github.com/o/r/releases/tag/v1.4.0",
+         "published_at": "2026-10-29T15:51:49Z",
+         "assets": [{"name": "Switch-Launcher-1.4.0.zip.sha256", "browser_download_url": "https://x/a.sha256"},
+                    {"name": "Switch-Launcher-1.4.0.zip", "browser_download_url": "https://x/a.zip"}]}
+        """
+        let release = try UpdateChecker.parse(Data(json.utf8))
+        XCTAssertEqual(release.version, "1.4.0")
+        XCTAssertEqual(release.downloadURL?.absoluteString, "https://x/a.zip")
+        XCTAssertEqual(release.pageURL.absoluteString, "https://github.com/o/r/releases/tag/v1.4.0")
+        XCTAssertNotNil(release.published)
     }
 }

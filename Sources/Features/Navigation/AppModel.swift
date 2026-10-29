@@ -59,6 +59,7 @@ public final class AppModel {
     public let input = InputRouter()
     public let store = StoreService()
     public let storage = StorageUsage()
+    public let updates = UpdateChecker()
     @ObservationIgnored public let sound = UISoundPlayer()
 
     public private(set) var stack: [Route] = []
@@ -72,6 +73,7 @@ public final class AppModel {
     public var isFullScreen = false
     @ObservationIgnored public private(set) var home: HomeModel!
     @ObservationIgnored private var started = false
+    @ObservationIgnored private var updatesStarted = false
 
     public init() {
         home = HomeModel(app: self)
@@ -111,7 +113,7 @@ public final class AppModel {
     }
 
     /// `-launchGame <title>` starts a game at launch.
-    /// `-openScreen settings|data|saves|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
+    /// `-openScreen settings|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
     /// (handy for screenshots and UI checks).
     private func openScreenFromLaunchArgument() {
         if let title = UserDefaults.standard.string(forKey: "launchGame"),
@@ -125,6 +127,7 @@ public final class AppModel {
         case "settings": openDock(.settings)
         case "data": push(.menu(makeSettingsMenu(startingAt: "data")))
         case "saves": push(.menu(makeSettingsMenu(startingAt: "saves")))
+        case "system": push(.menu(makeSettingsMenu(startingAt: "system")))
         case "library": openLibrary()
         case "album": openDock(.album)
         case "user": openUserPage()
@@ -166,6 +169,15 @@ public final class AppModel {
         input.useNintendoLayout = value.nintendoButtonLayout
         launcher.keepGameInFront = value.keepGameInFront
         store.configure(value.store)
+        if value.checkForUpdates {
+            if !updatesStarted {
+                updatesStarted = true
+                updates.startChecking { [weak self] release in self?.announceUpdate(release) }
+            }
+        } else if updatesStarted {
+            updatesStarted = false
+            updates.stopChecking()
+        }
     }
 
     public func theme(systemIsDark: Bool) -> Theme {
@@ -442,6 +454,48 @@ public final class AppModel {
         home.selectFirstSoftware()
         if settings.value.homeButtonReturnsToLauncher {
             bringToFront()
+        }
+    }
+
+    // MARK: Updates
+
+    private func announceUpdate(_ release: AppRelease) {
+        // Wait for the startup animation, so the message isn't missed.
+        Task {
+            while isBooting { try? await Task.sleep(for: .milliseconds(500)) }
+            try? await Task.sleep(for: .seconds(1))
+            showToast("Switch Launcher \(release.version) is available. See System Settings › System.",
+                      symbol: "arrow.down.circle.fill")
+        }
+    }
+
+    /// Software Update: offers the new version's download, or checks again.
+    func openSoftwareUpdate() {
+        guard let release = updates.availableRelease else {
+            Task {
+                await updates.check()
+                switch updates.state {
+                case .upToDate: showToast("Switch Launcher is up to date.", symbol: "checkmark.circle.fill")
+                case .failed(let message): showToast(message, symbol: "exclamationmark.triangle.fill")
+                default: break
+                }
+            }
+            return
+        }
+        sound.play(.select)
+        let current = updates.currentVersion ?? "this version"
+        dialog = DialogModel(
+            app: self,
+            message: "Switch Launcher \(release.version) is available",
+            detail: "You have \(current). The download opens in your browser; unzip it and replace Switch Launcher in Applications.",
+            buttons: ["Later", "What's New", "Download"],
+            destructiveIndex: nil
+        ) { index in
+            switch index {
+            case 1: NSWorkspace.shared.open(release.pageURL)
+            case 2: NSWorkspace.shared.open(release.downloadURL ?? release.pageURL)
+            default: break
+            }
         }
     }
 

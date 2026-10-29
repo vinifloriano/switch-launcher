@@ -29,8 +29,17 @@ public struct SaveData: Identifiable, Hashable, Sendable {
     public var id: String { titleID }
 }
 
-/// Measures and frees the space software takes. Sizes are measured in the background on request
-/// and kept for the session, since walking a 15 GB bundle takes a moment.
+/// An app's measured size, with what identified the bundle when it was measured.
+struct CachedAppSize: Codable, Equatable, Sendable {
+    let stamp: String
+    let size: Int64
+    /// Save data size last measured, shown until it's measured again.
+    var data: Int64?
+}
+
+/// Measures and frees the space software takes. Walking a 15 GB bundle takes a moment, so app
+/// sizes are kept in `app-sizes.json` and measured again only when the app changes. Save data
+/// changes while playing and is small to walk, so it's measured every time.
 @MainActor @Observable
 public final class StorageUsage {
     public private(set) var software: [String: SoftwareUsage] = [:]
@@ -42,8 +51,16 @@ public final class StorageUsage {
     public private(set) var knownTitles: [String: String] = [:]
     @ObservationIgnored private var pending: [Game] = []
     @ObservationIgnored private let titlesFile = AppPaths.supportDirectory.appendingPathComponent("titles.json")
+    @ObservationIgnored private let sizesFile: URL
+    /// App sizes by game id, saved between launches.
+    @ObservationIgnored private var appSizes: [String: CachedAppSize] = [:]
 
-    public init() {
+    public init(sizesFile: URL = AppPaths.supportDirectory.appendingPathComponent("app-sizes.json")) {
+        self.sizesFile = sizesFile
+        if let data = try? Data(contentsOf: sizesFile),
+           let sizes = try? JSONDecoder().decode([String: CachedAppSize].self, from: data) {
+            appSizes = sizes
+        }
         if let data = try? Data(contentsOf: titlesFile),
            let titles = try? JSONDecoder().decode([String: String].self, from: data) {
             knownTitles = titles
@@ -97,20 +114,47 @@ public final class StorageUsage {
     public func measure(_ games: [Game]) {
         let new = games.filter { software[$0.id] == nil && !pending.contains($0) }
         guard !new.isEmpty else { return }
+        // Show cached sizes right away; save data is refreshed below.
+        for game in new {
+            if let cached = appSizes[game.id], cached.stamp == Self.stamp(for: game) {
+                software[game.id] = SoftwareUsage(app: cached.size, data: cached.data ?? 0)
+            }
+        }
         pending += new
         guard !isMeasuring else { return }
         isMeasuring = true
         Task {
+            var changed = false
             while let game = pending.first {
-                let usage = await Task.detached(priority: .utility) {
-                    SoftwareUsage(app: Self.size(of: game.url),
-                                  data: Self.dataFolder(for: game).map(Self.size(of:)) ?? 0)
+                let cached = appSizes[game.id]
+                let (usage, fresh) = await Task.detached(priority: .utility) { () -> (SoftwareUsage, CachedAppSize) in
+                    let stamp = Self.stamp(for: game)
+                    let app = cached?.stamp == stamp ? cached!.size : Self.size(of: game.url)
+                    let data = Self.dataFolder(for: game).map(Self.size(of:)) ?? 0
+                    return (SoftwareUsage(app: app, data: data), CachedAppSize(stamp: stamp, size: app, data: data))
                 }.value
                 software[game.id] = usage
+                if fresh != cached {
+                    appSizes[game.id] = fresh
+                    changed = true
+                }
                 pending.removeFirst()
             }
             isMeasuring = false
+            if changed { saveAppSizes() }
         }
+    }
+
+    private func saveAppSizes() {
+        if let data = try? JSONEncoder().encode(appSizes) { try? data.write(to: sizesFile, options: .atomic) }
+    }
+
+    /// Changes when the app is replaced or updated: its path, version and Info.plist date.
+    nonisolated static func stamp(for game: Game) -> String {
+        let plist = game.url.appendingPathComponent("Contents/Info.plist")
+        let modified = (try? plist.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        return [game.url.path, game.version ?? "", modified.map { String($0.timeIntervalSince1970) } ?? ""]
+            .joined(separator: "|")
     }
 
     /// Measures one title again, e.g. after its save data was deleted.
@@ -121,6 +165,7 @@ public final class StorageUsage {
 
     public func forget(_ game: Game) {
         software[game.id] = nil
+        if appSizes.removeValue(forKey: game.id) != nil { saveAppSizes() }
     }
 
     /// The disk that holds `url`.
