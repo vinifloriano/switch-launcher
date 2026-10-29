@@ -1,0 +1,6 @@
+# Realtek RTL8156 USB 2.5 GbE adapters (r8152 driver) still hit "NETDEV WATCHDOG ... Tx timeout"
+# at 2.5 Gb/s on some nodes with offloads off (k8s-worker3). Advertising at most 1 Gb/s stops it:
+# tested at ~78 MB/s sustained for 3 minutes with no resets. Applied whenever the adapter appears.
+# Install: /etc/udev/rules.d/99-r8156-1g.rules, then `udevadm control --reload`.
+# Mask 0x02f = 10/100 half+full and 1000baseT/Full.
+ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="8156", RUN+="/usr/sbin/ethtool -s $name advertise 0x02f"

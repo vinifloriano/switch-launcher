@@ -49,6 +49,20 @@ network for a while. `deploy/nodes/99-r8156-no-tso.rules` turns off TCP/generic 
 offload whenever such an adapter appears; it is installed in `/etc/udev/rules.d/` on every node.
 Large uploads ran at 30 MB/s with the rule in place.
 
+That was not enough on k8s-worker3: its adapter still reset at 2.5 Gb/s, even with scatter-gather
+and TX checksum offload also off. `deploy/nodes/99-r8156-1g.rules` makes the adapter advertise at
+most 1 Gb/s (`ethtool -s <if> advertise 0x02f`). With it, worker3 sent ~78 MB/s for 3 minutes with
+no resets. It is installed on k8s-worker3 only. To add it to another node, apply it live first with
+a rollback timer, because renegotiating drops the link for a few seconds:
+
+```bash
+sudo systemd-run --unit=nic-speed-rollback --on-active=150 /usr/sbin/ethtool -s <if> advertise 0x80000000002f
+sudo ethtool -s <if> advertise 0x02f
+ping -c3 192.168.1.6 && sudo systemctl stop nic-speed-rollback.timer   # keep it only if the node is reachable
+```
+
+Then copy the rule to `/etc/udev/rules.d/` and run `sudo udevadm control --reload`.
+
 Each app is archived with Apple Archive (LZFSE) and streamed into a multipart upload in 64 MB
 parts, so no local copy is written. The catalog entry records the archive's size and SHA-256;
 publishing a new version replaces the old archive.
