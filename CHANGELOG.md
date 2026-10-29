@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0 — 2026-10-29
 
 - **Delete software**: software options › Data Management has Delete Software (moves the app and its
   `.app.key` to the Trash, keeps save data) and Delete Save Data. Apps added one by one get Remove
