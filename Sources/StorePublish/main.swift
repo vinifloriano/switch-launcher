@@ -25,12 +25,15 @@ struct Options {
     var scanFolders: [URL] = []
     var jobs = 1
     var force = false
+    /// Upload speed limit in bytes per second (all jobs together), nil for none.
+    var maxRate: Double?
 
     static let usage = """
     usage: store-publish --endpoint URL --user NAME [options] [APP...]
       --scan DIR      also publish every game found in DIR (repeatable)
       --jobs N        upload N games at once (default 1)
       --force         re-upload games already in the store at the same version
+      --max-rate MB   limit the upload speed to MB megabytes per second (all jobs together)
       --bucket NAME   default switch-games
       --region NAME   default us-east-1
       The password is read from STORE_PASSWORD, or asked for.
@@ -45,6 +48,7 @@ struct Options {
         var scanFolders: [URL] = []
         var jobs = 1
         var force = false
+        var maxRate: Double?
         var iterator = arguments.makeIterator()
         while let argument = iterator.next() {
             switch argument {
@@ -55,6 +59,7 @@ struct Options {
             case "--scan": iterator.next().map { scanFolders.append(URL(fileURLWithPath: $0, isDirectory: true)) }
             case "--jobs": jobs = max(1, Int(iterator.next() ?? "") ?? 1)
             case "--force": force = true
+            case "--max-rate": maxRate = iterator.next().flatMap(Double.init).map { $0 * 1_000_000 }
             case "-h", "--help": return nil
             default: apps.append(URL(fileURLWithPath: argument))
             }
@@ -66,7 +71,7 @@ struct Options {
         }
         guard let password, !password.isEmpty else { return nil }
         return Options(endpoint: endpoint, bucket: bucket, region: region, user: user, password: password,
-                       apps: apps, scanFolders: scanFolders, jobs: jobs, force: force)
+                       apps: apps, scanFolders: scanFolders, jobs: jobs, force: force, maxRate: maxRate)
     }
 }
 
@@ -108,7 +113,8 @@ struct S3 {
 
     /// Streams `chunks` into a multipart upload. Returns total size and SHA-256.
     func multipartUpload(_ key: String, contentType: String, chunks: AsyncThrowingStream<Data, Error>,
-                         progress: (Int64) -> Void) async throws -> (Int64, String) {
+                         maxRate: Double? = nil, progress: (Int64) -> Void) async throws -> (Int64, String) {
+        let start = Date()
         guard let (data, _) = try await send("POST", key, query: [("uploads", "")], contentType: contentType),
               let uploadID = Self.tag("UploadId", in: data) else { throw S3Error(status: 0, body: "no UploadId") }
         var parts: [(Int, String)] = []
@@ -123,6 +129,11 @@ struct S3 {
                 parts.append((number, etag))
                 total += Int64(chunk.count)
                 progress(total)
+                // Stay under the speed limit: wait until this many bytes are "due".
+                if let maxRate {
+                    let due = Double(total) / maxRate - Date().timeIntervalSince(start)
+                    if due > 0 { try await Task.sleep(for: .seconds(due)) }
+                }
             }
             let xml = "<CompleteMultipartUpload>" + parts.map {
                 "<Part><PartNumber>\($0.0)</PartNumber><ETag>\($0.1)</ETag></Part>"
@@ -287,7 +298,8 @@ func publish(_ app: URL, _ game: Game, writer: CatalogWriter, force: Bool) async
         let start = Date()
         var lastPrint = Date()
         let (size, sha) = try await s3.multipartUpload(
-            archiveKey, contentType: "application/octet-stream", chunks: archiveChunks(of: app)
+            archiveKey, contentType: "application/octet-stream", chunks: archiveChunks(of: app),
+            maxRate: options.maxRate.map { $0 / Double(options.jobs) }
         ) { uploaded in
             if Date().timeIntervalSince(lastPrint) > 30 {
                 lastPrint = Date()

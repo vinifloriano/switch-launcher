@@ -1,0 +1,5 @@
+# Realtek RTL8156 USB 2.5 GbE adapters (r8152 driver) hit "NETDEV WATCHDOG ... Tx timeout" and
+# reset under sustained throughput, dropping the node off the network. Turning off TCP/generic
+# segmentation offload avoids it. Applied whenever the adapter appears (boot and USB resets).
+# Install: /etc/udev/rules.d/99-r8156-no-tso.rules, then `udevadm control --reload`.
+ACTION=="add", SUBSYSTEM=="net", ATTRS{idVendor}=="0bda", ATTRS{idProduct}=="8156", RUN+="/usr/sbin/ethtool -K $name tso off gso off"

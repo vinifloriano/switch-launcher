@@ -38,6 +38,17 @@ directly. Games already in the store at the same version are skipped (use `--for
 so an interrupted run can simply be started again. `--jobs` uploads several games at once; their
 catalog updates are written one after another, so none are lost.
 
+`--max-rate MB` caps the upload speed. Send uploads to the node that runs the store pod (currently
+`k8s-worker3`, `http://192.168.1.13:30900`) so they don't also pass through another node.
+
+### Node network adapters
+
+The cluster nodes use Realtek RTL8156 USB 2.5 GbE adapters (`r8152` driver). Under sustained
+multi-GB transfers they hit `NETDEV WATCHDOG … Tx timeout` and reset, dropping the node off the
+network for a while. `deploy/nodes/99-r8156-no-tso.rules` turns off TCP/generic segmentation
+offload whenever such an adapter appears; it is installed in `/etc/udev/rules.d/` on every node.
+Large uploads ran at 30 MB/s with the rule in place.
+
 Each app is archived with Apple Archive (LZFSE) and streamed into a multipart upload in 64 MB
 parts, so no local copy is written. The catalog entry records the archive's size and SHA-256;
 publishing a new version replaces the old archive.
