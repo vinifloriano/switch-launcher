@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Delete software**: software options › Data Management has Delete Software (moves the app and its
+  `.app.key` to the Trash, keeps save data) and Delete Save Data. Apps added one by one get Remove
+  from Library instead, which leaves the app where it is.
+- **Storage**: software options show the app's size, its save data and free space on its disk.
+  System Settings › Data Management shows free space on each disk that holds software, totals, and
+  every title by size.
+- **Add Software** tile at the end of All Software: adds game apps or folders that contain them.
 - **Store server**: SeaweedFS is replaced by a Versity S3 Gateway that serves a TrueNAS folder
   read-only. Games no longer pass through the cluster's worker disks.
 - `store-publish --to DIR`: publishes into a folder (such as the NAS share mounted over SMB) instead

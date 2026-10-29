@@ -58,6 +58,7 @@ public final class AppModel {
     public let status = SystemStatus()
     public let input = InputRouter()
     public let store = StoreService()
+    public let storage = StorageUsage()
     @ObservationIgnored public let sound = UISoundPlayer()
 
     public private(set) var stack: [Route] = []
@@ -110,7 +111,7 @@ public final class AppModel {
     }
 
     /// `-launchGame <title>` starts a game at launch.
-    /// `-openScreen settings|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
+    /// `-openScreen settings|data|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
     /// (handy for screenshots and UI checks).
     private func openScreenFromLaunchArgument() {
         if let title = UserDefaults.standard.string(forKey: "launchGame"),
@@ -122,12 +123,23 @@ public final class AppModel {
         isBooting = false
         switch screen {
         case "settings": openDock(.settings)
+        case "data": push(.menu(makeSettingsMenu(startingAt: "data")))
         case "library": openLibrary()
         case "album": openDock(.album)
         case "user": openUserPage()
         case "controllers": openDock(.controllers)
         case "cards": openDock(.virtualGameCard)
         case "options": library.games.first.map(openOptions)
+        case "storage":
+            if let game = library.games.first {
+                let menu = makeOptionsMenu(for: game)
+                menu.sectionIndex = menu.sections.firstIndex { $0.id == "data" } ?? 0
+                push(.menu(menu))
+            }
+        case "add":
+            let model = LibraryModel(app: self)
+            model.index = model.addIndex
+            push(.library(model))
         case "dialog": confirm(message: "Close the software?", detail: "Any unsaved progress will be lost.", confirmTitle: "Close") {}
         case "web": openDock(.news)
         case "tester": openControllerTest()

@@ -11,12 +11,14 @@ extension AppModel {
                 themesSection,
                 soundSection,
                 librarySection,
+                dataSection,
                 storeSection,
                 launcherSection,
                 controlsSection,
                 systemSection,
             ]
         }
+        storage.measure(library.games)
         if let section, let index = menu.sections.firstIndex(where: { $0.id == section }) {
             menu.sectionIndex = index
         }
@@ -176,6 +178,52 @@ extension AppModel {
         )
     }
 
+    /// Data Management: free space on the disks that hold software, and what each title takes.
+    private var dataSection: MenuSection {
+        let games = library.games
+        let usage = storage.software
+        let measured = games.compactMap { usage[$0.id] }
+        let done = measured.count == games.count
+
+        // Every disk that holds software or receives downloads, once each.
+        var volumes: [VolumeUsage] = []
+        for url in games.map(\.url) + [storeInstallFolder] {
+            if let volume = StorageUsage.volume(for: url), !volumes.contains(where: { $0.url == volume.url }) {
+                volumes.append(volume)
+            }
+        }
+        var items = volumes.map { volume in
+            MenuItem(id: "volume:" + volume.url.path, title: volume.name,
+                     subtitle: "\(ByteFormatter.string(volume.used)) used of \(ByteFormatter.string(volume.total))",
+                     symbol: "internaldrive.fill",
+                     kind: .info("\(ByteFormatter.string(volume.available)) free"))
+        }
+        let progress = done ? "" : " · measuring \(measured.count) of \(games.count)…"
+        items += [
+            MenuItem(id: "softwareTotal", title: "Software", subtitle: "\(games.count) titles\(progress)",
+                     kind: .info(ByteFormatter.string(measured.reduce(0) { $0 + $1.app }))),
+            MenuItem(id: "dataTotal", title: "Save Data",
+                     kind: .info(ByteFormatter.string(measured.reduce(0) { $0 + $1.data }))),
+        ]
+        // Largest first; titles still being measured go last.
+        let sorted = games.sorted { (usage[$0.id]?.total ?? -1) > (usage[$1.id]?.total ?? -1) }
+        items += sorted.map { game in
+            let size = usage[game.id].map { usage in
+                usage.data > 0
+                    ? "\(ByteFormatter.string(usage.app)) · save data \(ByteFormatter.string(usage.data))"
+                    : ByteFormatter.string(usage.app)
+            } ?? "Measuring…"
+            return MenuItem(id: "size:" + game.id, title: game.title, subtitle: size,
+                            image: IconCache.shared.icon(for: game),
+                            kind: .link { [unowned self] in openOptions(for: game) })
+        }
+        return MenuSection(
+            id: "data", title: "Data Management", symbol: "externaldrive.fill",
+            footnote: "Select software to see its details or delete it. Deleted software and save data go to the Trash.",
+            items: items
+        )
+    }
+
     private var launcherSection: MenuSection {
         MenuSection(
             id: "launcher", title: "Launcher", symbol: "house.fill",
@@ -244,6 +292,35 @@ extension AppModel {
         MenuItem(id: id, title: title, subtitle: subtitle, kind: .toggle(settings.value[keyPath: keyPath]) { [unowned self] in
             settings.value[keyPath: keyPath] = $0
         })
+    }
+
+    /// Add to Library: a game app is added on its own, any other folder is scanned for software.
+    func addToLibrary() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = [.applicationBundle, .folder]
+        panel.directoryURL = storeInstallFolder
+        panel.prompt = "Add"
+        panel.message = "Choose game apps, or folders that contain them."
+        guard panel.runModal() == .OK else { return }
+        for url in panel.urls {
+            if url.pathExtension == "app" {
+                // Already found through its folder: adding it again would make it a reference only.
+                let scanned = settings.value.libraryFolders.contains(url.deletingLastPathComponent().path)
+                if !scanned, !settings.value.extraApps.contains(url.path) { settings.value.extraApps.append(url.path) }
+            } else if !settings.value.libraryFolders.contains(url.path) {
+                settings.value.libraryFolders.append(url.path)
+            }
+        }
+        let before = library.games.count
+        Task {
+            await reloadLibrary()
+            let added = library.games.count - before
+            showToast(added > 0 ? "Added \(added) \(added == 1 ? "title" : "titles")." : "No new software found.",
+                      symbol: added > 0 ? "checkmark.circle.fill" : "info.circle.fill")
+        }
     }
 
     private func addLibraryFolder() {

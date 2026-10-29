@@ -181,3 +181,38 @@ final class StoreServiceIntegrationTests: XCTestCase {
         }
     }
 }
+
+final class StorageUsageTests: XCTestCase {
+    private var folder: URL!
+
+    override func setUpWithError() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    func testMeasuresBundleSizeOnDisk() throws {
+        let app = folder.appendingPathComponent("Game.app/Contents/Resources", isDirectory: true)
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        try Data(count: 300_000).write(to: app.appendingPathComponent("romfs.bin"))
+        try Data(count: 10).write(to: app.appendingPathComponent("small"))
+        let size = StorageUsage.size(of: folder.appendingPathComponent("Game.app"))
+        XCTAssertGreaterThanOrEqual(size, 300_010)
+        XCTAssertLessThan(size, 400_000)
+        XCTAssertEqual(StorageUsage.size(of: app.appendingPathComponent("missing")), 0)
+    }
+
+    func testKeyFileSitsBesideTheApp() {
+        let app = URL(fileURLWithPath: "/Games/Mario Kart 8.app")
+        XCTAssertEqual(StorageUsage.keyFile(for: app).path, "/Games/Mario Kart 8.app.key")
+    }
+
+    func testReportsTheVolume() throws {
+        let volume = try XCTUnwrap(StorageUsage.volume(for: folder))
+        XCTAssertGreaterThan(volume.total, 0)
+        XCTAssertLessThanOrEqual(volume.available, volume.total)
+    }
+}

@@ -23,8 +23,9 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 - **Playing**: games open full screen on top of the launcher and get keyboard focus. The launcher
   keeps it there if a background app tries to take it, and comes back when you press HOME on a
   controller or quit the game. Play time is recorded per title.
-- **All Software**: grid with four sort orders, per-title options (information, play activity,
-  data management) and Virtual Game Cards to choose what appears on HOME.
+- **All Software**: grid with four sort orders, an Add Software tile, per-title options (information,
+  play activity, size and save data, Delete Software) and Virtual Game Cards to choose what appears
+  on HOME. System Settings › Data Management shows free space on the Mac and what each title takes.
 - **Game Store**: browse and install games from your own S3-compatible server (an S3 gateway
   over a NAS folder on the homelab), over the home network or a Cloudflare tunnel, with resumable downloads and checksum
   verification. See [docs/STORE.md](docs/STORE.md).
@@ -115,7 +116,7 @@ make dist     # dist/Switch-Launcher-<version>.zip + .sha256
 | `SoundKit` | `UISoundPlayer`: interface sounds synthesized at startup |
 | `Features` | Screens and navigation; two-pane pages share `MenuModel` / `MenuView` |
 
-Launch options for checking screens: `-openScreen settings|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
+Launch options for checking screens: `-openScreen settings|data|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
 and `-launchGame <title>` to start a game directly.
 
 Logs: `log stream --predicate 'subsystem == "dev.vinicius.switchlauncher"'`.
