@@ -13,6 +13,10 @@ public struct MenuItem: Identifiable {
         case action(() -> Void)
         /// Opens another page.
         case link(() -> Void)
+        /// A level from 0 to 1; left/right change it in steps.
+        case slider(Double, (Double) -> Void)
+        /// A small heading that groups the rows below it. Not focusable.
+        case header
     }
 
     public let id: String
@@ -22,6 +26,10 @@ public struct MenuItem: Identifiable {
     public var symbol: String?
     public var isDestructive = false
     public let kind: Kind
+    /// A bar shown under the row, e.g. disk usage.
+    public var meter: Meter?
+    /// What + does on this row (e.g. software options).
+    public var options: (() -> Void)?
 
     public init(
         id: String,
@@ -30,8 +38,12 @@ public struct MenuItem: Identifiable {
         image: NSImage? = nil,
         symbol: String? = nil,
         isDestructive: Bool = false,
+        meter: Meter? = nil,
+        options: (() -> Void)? = nil,
         kind: Kind
     ) {
+        self.meter = meter
+        self.options = options
         self.id = id
         self.title = title
         self.subtitle = subtitle
@@ -42,8 +54,15 @@ public struct MenuItem: Identifiable {
     }
 
     var isFocusable: Bool {
-        if case .info = kind { return false }
-        return true
+        switch kind {
+        case .info, .header: false
+        default: true
+        }
+    }
+
+    /// A heading row: `MenuItem.header("Wi-Fi")`.
+    static func header(_ title: String) -> MenuItem {
+        MenuItem(id: "header:" + title, title: title, kind: .header)
     }
 }
 
@@ -91,6 +110,12 @@ public final class MenuModel: InputResponder {
     }
 
     var sections: [MenuSection] { build() }
+
+    /// The row with the selection, when the right-hand pane has focus.
+    var focusedItem: MenuItem? {
+        guard focus == .items, let items = currentSection?.items, items.indices.contains(itemIndex) else { return nil }
+        return items[itemIndex]
+    }
 
     var currentSection: MenuSection? {
         let all = sections
@@ -146,9 +171,23 @@ public final class MenuModel: InputResponder {
                 } else if position == nil, let first = focusable.first {
                     itemIndex = first
                 }
-            case .left where !single:
-                focus = .sidebar
-                app.sound.play(.move)
+            case .left, .right:
+                if items.indices.contains(itemIndex), case .slider(let value, let set) = items[itemIndex].kind {
+                    let step = 1.0 / 16
+                    let next = min(max(value + (button == .right ? step : -step), 0), 1)
+                    if next != value {
+                        set(next)
+                        app.sound.play(.move)
+                    }
+                } else if button == .left, !single {
+                    focus = .sidebar
+                    app.sound.play(.move)
+                }
+            case .plus:
+                if items.indices.contains(itemIndex), let options = items[itemIndex].options {
+                    app.sound.play(.select)
+                    options()
+                }
             case .b:
                 if single {
                     app.pop()
@@ -179,6 +218,8 @@ public final class MenuModel: InputResponder {
             perform()
         case .link(let open):
             open()
+        case .slider, .header:
+            break
         }
     }
 

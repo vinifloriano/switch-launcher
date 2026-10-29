@@ -55,6 +55,16 @@ struct MenuView: View {
                             .padding(.bottom, ui(14))
                     }
                     ForEach(Array(section.items.enumerated()), id: \.element.id) { index, item in
+                        if case .header = item.kind {
+                            Text(item.title.uppercased())
+                                .font(ui.font(14, .semibold))
+                                .tracking(ui(0.6))
+                                .foregroundStyle(theme.textSecondary)
+                                .padding(.horizontal, ui(18))
+                                .padding(.top, index == 0 ? 0 : ui(26))
+                                .padding(.bottom, ui(6))
+                                .id(index)
+                        } else {
                         ItemRow(
                             title: item.title,
                             subtitle: item.subtitle,
@@ -62,10 +72,13 @@ struct MenuView: View {
                             symbol: item.symbol,
                             accessory: accessory(for: item),
                             isFocused: model.focus == .items && index == model.itemIndex,
-                            isDestructive: item.isDestructive
+                            isDestructive: item.isDestructive,
+                            meter: item.meter,
+                            onSlide: slideAction(for: item)
                         )
                         .id(index)
                         .onTapGesture { model.tapItem(index) }
+                        }
                     }
                     if section.items.isEmpty {
                         Text("Nothing here yet.")
@@ -94,13 +107,27 @@ struct MenuView: View {
         case .choice(let options, let index, _): .choice(options.indices.contains(index) ? options[index] : "")
         case .action: .none
         case .link: .chevron
+        case .slider(let value, _): .slider(value)
+        case .header: .none
         }
     }
 
+    private func slideAction(for item: MenuItem) -> ((Double) -> Void)? {
+        if case .slider(_, let set) = item.kind { return set }
+        return nil
+    }
+
     private var hints: [ButtonHint] {
-        [
-            ButtonHint("B", "Back") { model.app.handle(.b) },
-            ButtonHint("A", "OK") { model.app.handle(.a) },
-        ]
+        let focused = model.focusedItem
+        var hints: [ButtonHint] = []
+        if focused?.options != nil {
+            hints.append(ButtonHint("+", "Options") { model.app.handle(.plus) })
+        }
+        hints.append(ButtonHint("B", "Back") { model.app.handle(.b) })
+        // A slider row changes with left/right, shown by its − and + marks.
+        if case .slider? = focused?.kind {} else {
+            hints.append(ButtonHint("A", "OK") { model.app.handle(.a) })
+        }
+        return hints
     }
 }

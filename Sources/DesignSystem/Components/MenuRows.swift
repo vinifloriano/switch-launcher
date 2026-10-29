@@ -51,6 +51,108 @@ public enum ItemAccessory {
     case toggle(Bool)
     case choice(String)
     case chevron
+    /// A level from 0 to 1 (brightness, volume), changed with left/right.
+    case slider(Double)
+}
+
+/// One coloured part of a `Meter`.
+public struct MeterSegment: Identifiable, Sendable {
+    public let id: String
+    public let label: String
+    public let detail: String
+    /// Share of the whole bar, 0...1.
+    public let fraction: Double
+    public let color: Color
+
+    public init(id: String, label: String, detail: String, fraction: Double, color: Color) {
+        self.id = id
+        self.label = label
+        self.detail = detail
+        self.fraction = fraction
+        self.color = color
+    }
+}
+
+/// A bar split into coloured parts with a legend below, e.g. how a disk is used.
+public struct Meter: Sendable {
+    public let segments: [MeterSegment]
+
+    public init(segments: [MeterSegment]) {
+        self.segments = segments
+    }
+}
+
+struct MeterView: View {
+    let meter: Meter
+
+    @Environment(\.theme) private var theme
+    @Environment(\.ui) private var ui
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: ui(10)) {
+            GeometryReader { geometry in
+                HStack(spacing: ui(2)) {
+                    ForEach(meter.segments.filter { $0.fraction > 0 }) { segment in
+                        Rectangle()
+                            .fill(segment.color)
+                            .frame(width: max(ui(3), geometry.size.width * min(segment.fraction, 1)))
+                    }
+                    Spacer(minLength: 0)
+                }
+                .background(theme.divider.opacity(0.45))
+                .clipShape(Capsule(style: .continuous))
+            }
+            .frame(height: ui(16))
+            HStack(spacing: ui(22)) {
+                ForEach(meter.segments) { segment in
+                    HStack(spacing: ui(7)) {
+                        Circle().fill(segment.color).frame(width: ui(11), height: ui(11))
+                        Text(segment.label)
+                            .font(ui.font(14, .medium))
+                            .foregroundStyle(theme.textPrimary)
+                        Text(segment.detail)
+                            .font(ui.font(14))
+                            .foregroundStyle(theme.textSecondary)
+                    }
+                    .lineLimit(1)
+                }
+            }
+        }
+    }
+}
+
+/// Level bar with a percentage, for `ItemAccessory.slider`.
+struct LevelSlider: View {
+    let value: Double
+    let isFocused: Bool
+    let onChange: ((Double) -> Void)?
+
+    @Environment(\.theme) private var theme
+    @Environment(\.ui) private var ui
+
+    var body: some View {
+        HStack(spacing: ui(12)) {
+            Image(systemName: "minus").opacity(isFocused ? 1 : 0.35)
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(theme.divider)
+                    Capsule().fill(theme.accent).frame(width: geometry.size.width * min(max(value, 0), 1))
+                }
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { drag in
+                    onChange?(min(max(drag.location.x / geometry.size.width, 0), 1))
+                })
+            }
+            .frame(width: ui(220), height: ui(10))
+            Image(systemName: "plus").opacity(isFocused ? 1 : 0.35)
+            Text("\(Int((value * 100).rounded()))%")
+                .font(ui.font(17, .medium))
+                .foregroundStyle(theme.textSecondary)
+                .frame(width: ui(52), alignment: .trailing)
+        }
+        .font(.system(size: ui(13), weight: .bold))
+        .foregroundStyle(theme.textSecondary)
+    }
 }
 
 /// A row in the right-hand pane: optional icon, title + subtitle, accessory value.
@@ -62,6 +164,8 @@ public struct ItemRow: View {
     let accessory: ItemAccessory
     let isFocused: Bool
     let isDestructive: Bool
+    let meter: Meter?
+    let onSlide: ((Double) -> Void)?
 
     @Environment(\.theme) private var theme
     @Environment(\.ui) private var ui
@@ -73,7 +177,9 @@ public struct ItemRow: View {
         symbol: String? = nil,
         accessory: ItemAccessory = .none,
         isFocused: Bool,
-        isDestructive: Bool = false
+        isDestructive: Bool = false,
+        meter: Meter? = nil,
+        onSlide: ((Double) -> Void)? = nil
     ) {
         self.title = title
         self.subtitle = subtitle
@@ -82,9 +188,32 @@ public struct ItemRow: View {
         self.accessory = accessory
         self.isFocused = isFocused
         self.isDestructive = isDestructive
+        self.meter = meter
+        self.onSlide = onSlide
     }
 
     public var body: some View {
+        VStack(alignment: .leading, spacing: ui(12)) {
+            mainRow
+            if let meter {
+                MeterView(meter: meter).padding(.bottom, ui(6))
+            }
+        }
+        .padding(.horizontal, ui(18))
+        .padding(.vertical, ui(10))
+        .frame(minHeight: ui(66))
+        .background(
+            RoundedRectangle(cornerRadius: ui(4), style: .continuous)
+                .fill(isFocused ? theme.surface : .clear)
+        )
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(theme.divider.opacity(0.7)).frame(height: 1)
+        }
+        .selectionFrame(isFocused, cornerRadius: ui(4))
+        .contentShape(Rectangle())
+    }
+
+    private var mainRow: some View {
         HStack(spacing: ui(16)) {
             if let image {
                 Image(nsImage: image)
@@ -113,18 +242,7 @@ public struct ItemRow: View {
             Spacer(minLength: ui(12))
             accessoryView
         }
-        .padding(.horizontal, ui(18))
-        .padding(.vertical, ui(10))
-        .frame(minHeight: ui(66))
-        .background(
-            RoundedRectangle(cornerRadius: ui(4), style: .continuous)
-                .fill(isFocused ? theme.surface : .clear)
-        )
-        .overlay(alignment: .bottom) {
-            Rectangle().fill(theme.divider.opacity(0.7)).frame(height: 1)
-        }
-        .selectionFrame(isFocused, cornerRadius: ui(4))
-        .contentShape(Rectangle())
+        .frame(minHeight: ui(46))
     }
 
     @ViewBuilder private var accessoryView: some View {
@@ -142,6 +260,8 @@ public struct ItemRow: View {
                 .foregroundStyle(theme.accent)
         case .toggle(let isOn):
             ConsoleToggle(isOn: isOn)
+        case .slider(let value):
+            LevelSlider(value: value, isFocused: isFocused, onChange: onSlide)
         case .chevron:
             Image(systemName: "chevron.right")
                 .font(.system(size: ui(16), weight: .semibold))

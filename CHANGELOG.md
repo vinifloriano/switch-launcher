@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.5.0 — 2026-10-29
+
+- **Switch 2 look**: the HOME Menu shortcuts sit together on one rounded bar.
+- **System Settings** follows the Switch 2's list: Airplane Mode, Screen Brightness, Bluetooth,
+  Internet, Parental Controls, Accessibility, Data Management, Users, Controllers and Accessories,
+  Audio, Display, Themes, Notifications, Sleep Mode and System.
+  - Mac controls work in place: brightness and volume sliders, mute, Wi-Fi and Bluetooth switches,
+    paired devices, Airplane Mode (Wi-Fi and Bluetooth off, restored after), connection test.
+  - Data Management shows a usage bar for the Mac's disk (system memory) and each external drive,
+    and moves software between drives (+ on a title, or Move Software in its options): copied,
+    checked byte for byte, then removed from the old drive.
+  - Users lists the Mac's accounts and the signed-in person's save data.
+  - Parental Controls: a 4-digit PIN and an optional daily play time limit. Past the limit, starting
+    software takes the PIN; deleting software or save data always does.
+  - Accessibility: Reduce Motion. Notifications: choose which messages appear. Sleep Mode:
+    Auto-Sleep on the HOME Menu, turn off the display, put the Mac to sleep.
+  - Game Store server settings moved to Internet, library folders to Data Management.
+- **Groups** tab in All Software (L/R): create groups, pick their software, rename or delete them.
+- **Virtual Game Cards**: + opens a card's software options.
+- **User Settings** on My Page, with the profile icon and the Mac account.
+- The controller's HOME (Guide/Xbox) button comes back to the launcher during play instead of
+  opening macOS's Games app; the running software is selected and marked Playing.
+
 ## 1.4.0 — 2026-10-29
 
 - **Software Update** in System Settings › System: checks GitHub for a newer release at startup and

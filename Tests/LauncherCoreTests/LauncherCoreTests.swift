@@ -274,3 +274,74 @@ final class UpdateCheckerTests: XCTestCase {
         XCTAssertNotNil(release.published)
     }
 }
+
+final class MoveAndPlayTimeTests: XCTestCase {
+    private var folder: URL!
+
+    override func setUpWithError() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    @MainActor
+    func testMovesAppWithKeyAndDeletesOriginal() async throws {
+        let source = folder.appendingPathComponent("from/Game.app/Contents", isDirectory: true)
+        try FileManager.default.createDirectory(at: source, withIntermediateDirectories: true)
+        try Data(count: 123_456).write(to: source.appendingPathComponent("game.bin"))
+        let app = source.deletingLastPathComponent()
+        try Data("k".utf8).write(to: StorageUsage.keyFile(for: app))
+        let storage = StorageUsage(sizesFile: folder.appendingPathComponent("sizes.json"))
+        let target = folder.appendingPathComponent("to", isDirectory: true)
+
+        let moved = try await storage.move(Game(id: "g", title: "Game", url: app), to: target)
+
+        XCTAssertEqual(moved.path, target.appendingPathComponent("Game.app").path)
+        XCTAssertEqual(StorageUsage.contentSize(of: moved), 123_456)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: StorageUsage.keyFile(for: moved).path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: app.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: StorageUsage.keyFile(for: app).path))
+        XCTAssertNil(storage.moving["g"])
+    }
+
+    @MainActor
+    func testRefusesToOverwriteAtDestination() async throws {
+        let app = folder.appendingPathComponent("from/Game.app", isDirectory: true)
+        try FileManager.default.createDirectory(at: app, withIntermediateDirectories: true)
+        let target = folder.appendingPathComponent("to", isDirectory: true)
+        try FileManager.default.createDirectory(at: target.appendingPathComponent("Game.app"), withIntermediateDirectories: true)
+        let storage = StorageUsage(sizesFile: folder.appendingPathComponent("sizes.json"))
+        do {
+            _ = try await storage.move(Game(id: "g", title: "Game", url: app), to: target)
+            XCTFail("expected an error")
+        } catch {
+            XCTAssertTrue(FileManager.default.fileExists(atPath: app.path), "the original must stay")
+        }
+    }
+
+    @MainActor
+    func testCountsPlayTimePerDay() {
+        let history = PlayHistory(fileURL: folder.appendingPathComponent("history.json"))
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        history.addPlaytime("a", seconds: 600, endedAt: day)
+        history.addPlaytime("b", seconds: 300, endedAt: day)
+        history.addPlaytime("a", seconds: 100, endedAt: day.addingTimeInterval(-86_400))
+        XCTAssertEqual(history.seconds(on: day), 900)
+        // Saved and read back.
+        XCTAssertEqual(PlayHistory(fileURL: folder.appendingPathComponent("history.json")).seconds(on: day), 900)
+    }
+}
+
+final class BluetoothKindTests: XCTestCase {
+    func testKindsFromDeviceClass() {
+        XCTAssertEqual(BluetoothDevice.kind(major: 0x04, minor: 0x06, name: "AirPods Pro - Find My"), .audio)
+        XCTAssertEqual(BluetoothDevice.kind(major: 0x05, minor: 0x10, name: "Keychron K2"), .keyboard)
+        XCTAssertEqual(BluetoothDevice.kind(major: 0x05, minor: 0x20, name: "MX Master 3"), .mouse)
+        XCTAssertEqual(BluetoothDevice.kind(major: 0x05, minor: 0x02, name: "Pad"), .controller)
+        XCTAssertEqual(BluetoothDevice.kind(major: 0x05, minor: 0x00, name: "8BitDo Ultimate 2C Wireless"), .controller)
+        XCTAssertEqual(BluetoothDevice.kind(major: 0x05, minor: 0x00, name: "Pro Controller"), .controller)
+    }
+}

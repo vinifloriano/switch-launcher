@@ -116,6 +116,15 @@ public final class HomeModel: InputResponder {
         softwareIndex = 0
     }
 
+    /// Back from a game: select the software that's still running.
+    func selectRunningSoftware() {
+        row = .software
+        softwareIndex = items.firstIndex {
+            if case .game(let game) = $0 { return game.id == app.launcher.runningGameID }
+            return false
+        } ?? 0
+    }
+
     public func handle(_ button: NintendoButton) {
         let count = items.count
         softwareIndex = min(softwareIndex, count - 1)

@@ -60,6 +60,7 @@ public final class AppModel {
     public let store = StoreService()
     public let storage = StorageUsage()
     public let updates = UpdateChecker()
+    public let controls = MacControls()
     @ObservationIgnored public let sound = UISoundPlayer()
 
     public private(set) var stack: [Route] = []
@@ -74,10 +75,12 @@ public final class AppModel {
     @ObservationIgnored public private(set) var home: HomeModel!
     @ObservationIgnored private var started = false
     @ObservationIgnored private var updatesStarted = false
+    @ObservationIgnored private var gamesAppWatch: NSObjectProtocol?
+    @ObservationIgnored private var lastInput = Date()
 
     public init() {
         home = HomeModel(app: self)
-        isBooting = settings.value.showBootAnimation
+        isBooting = settings.value.showBootAnimation && !settings.value.reduceMotion
     }
 
     public func start() {
@@ -103,17 +106,19 @@ public final class AppModel {
         }
         input.start()
         status.start()
+        startAutoSleep()
 
         launcher.onSessionEnded = { [weak self] id, seconds in self?.sessionEnded(id, seconds: seconds) }
         store.onInstalled = { [weak self] game, url in self?.storeInstalled(game, at: url) }
         Task {
             await reloadLibrary()
             openScreenFromLaunchArgument()
+            captureFromLaunchArgument()
         }
     }
 
     /// `-launchGame <title>` starts a game at launch.
-    /// `-openScreen settings|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
+    /// `-openScreen settings|settings:<section>|groups|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
     /// (handy for screenshots and UI checks).
     private func openScreenFromLaunchArgument() {
         if let title = UserDefaults.standard.string(forKey: "launchGame"),
@@ -123,7 +128,15 @@ public final class AppModel {
         }
         guard let screen = UserDefaults.standard.string(forKey: "openScreen") else { return }
         isBooting = false
+        if screen.hasPrefix("settings:") {
+            push(.menu(makeSettingsMenu(startingAt: String(screen.dropFirst("settings:".count)))))
+            return
+        }
         switch screen {
+        case "groups":
+            let model = LibraryModel(app: self)
+            model.tab = .groups
+            push(.library(model))
         case "settings": openDock(.settings)
         case "data": push(.menu(makeSettingsMenu(startingAt: "data")))
         case "saves": push(.menu(makeSettingsMenu(startingAt: "saves")))
@@ -218,11 +231,13 @@ public final class AppModel {
     // MARK: Input & navigation
 
     public func handle(_ button: NintendoButton) {
+        lastInput = Date()
         if isBooting {
             isBooting = false
             return
         }
         if button == .home {
+            keepGamesAppAway()
             quickSettings = nil
             goHome()
             return
@@ -290,10 +305,33 @@ public final class AppModel {
     /// HOME pressed on a controller while a game is in front.
     private func returnFromGame() {
         guard settings.value.homeButtonReturnsToLauncher, launcher.session != nil else { return }
+        keepGamesAppAway()
         bringToFront()
         dialog = nil
         stack.removeAll()
+        home.selectRunningSoftware()
         sound.play(.home)
+    }
+
+    /// If macOS still opens its Games app for the HOME press, hide it again and come back.
+    private func keepGamesAppAway() {
+        gamesAppWatch.map(NSWorkspace.shared.notificationCenter.removeObserver)
+        let observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main
+        ) { [weak self] note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            guard app?.bundleIdentifier == "com.apple.games" else { return }
+            app?.hide()
+            MainActor.assumeIsolated { self?.bringToFront() }
+        }
+        gamesAppWatch = observer
+        Task {
+            try? await Task.sleep(for: .seconds(3))
+            if gamesAppWatch === observer {
+                NSWorkspace.shared.notificationCenter.removeObserver(observer)
+                gamesAppWatch = nil
+            }
+        }
     }
 
     /// macOS refuses `activate()` from a background app, so ask LaunchServices to open us
@@ -313,6 +351,7 @@ public final class AppModel {
     // MARK: Software
 
     public func launch(_ game: Game) {
+        guard launchAllowedByParentalControls(game) else { return }
         if let runningID = launcher.runningGameID, runningID != game.id {
             let runningTitle = library.game(id: runningID)?.title ?? "the software"
             confirm(
@@ -332,7 +371,7 @@ public final class AppModel {
 
     private func startNow(_ game: Game) {
         sound.play(.launch)
-        if launcher.runningGameID != game.id {
+        if launcher.runningGameID != game.id, !settings.value.reduceMotion {
             launchingGame = game
             Task {
                 try? await Task.sleep(for: .seconds(1.6))
@@ -390,9 +429,11 @@ public final class AppModel {
             settings.value.libraryFolders.append(folder)
         }
         sound.play(.select)
-        showToast(storage.hasSaveData(titleID: game.titleID)
+        if settings.value.notifyDownloads {
+            showToast(storage.hasSaveData(titleID: game.titleID)
                   ? "\(game.title) is ready to play. Your save data is back."
                   : "\(game.title) is ready to play.", symbol: "checkmark.circle.fill")
+        }
         Task { await reloadLibrary() }
     }
 
@@ -457,9 +498,27 @@ public final class AppModel {
         }
     }
 
+    // MARK: Auto-Sleep
+
+    /// Sleep Mode after the chosen minutes without input on the HOME Menu (never during play).
+    private func startAutoSleep() {
+        Task {
+            while true {
+                try? await Task.sleep(for: .seconds(30))
+                let minutes = settings.value.autoSleepMinutes
+                guard minutes > 0, launcher.session == nil, dialog == nil,
+                      Date().timeIntervalSince(lastInput) >= TimeInterval(minutes * 60) else { continue }
+                if case .sleep? = stack.last { continue }
+                lastInput = Date()
+                openDock(.sleep)
+            }
+        }
+    }
+
     // MARK: Updates
 
     private func announceUpdate(_ release: AppRelease) {
+        guard settings.value.notifyUpdates else { return }
         // Wait for the startup animation, so the message isn't missed.
         Task {
             while isBooting { try? await Task.sleep(for: .milliseconds(500)) }
@@ -531,10 +590,7 @@ public final class AppModel {
 
     /// Capture button: saves the launcher window to ~/Pictures/Screenshots (shown in Album).
     public func captureScreenshot() {
-        guard let view = NSApp.windows.first(where: { $0.canBecomeMain })?.contentView,
-              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return }
-        view.cacheDisplay(in: view.bounds, to: rep)
-        guard let data = rep.representation(using: .png, properties: [:]) else { return }
+        guard let data = windowPNG() else { return }
         let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Screenshots")
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
@@ -547,6 +603,26 @@ public final class AppModel {
         } catch {
             sound.play(.error)
             showToast("Couldn't save the screenshot.", symbol: "exclamationmark.triangle.fill")
+        }
+    }
+
+    /// The launcher window as PNG data, drawn from its views (works when the window isn't in front).
+    private func windowPNG() -> Data? {
+        guard let view = NSApp.windows.first(where: { $0.canBecomeMain })?.contentView,
+              let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep.representation(using: .png, properties: [:])
+    }
+
+    /// `-captureTo <file.png>`: saves the window a few seconds after launch, then quits. Used with
+    /// `-openScreen` to check screens without bringing the launcher to the front.
+    private func captureFromLaunchArgument() {
+        guard let path = UserDefaults.standard.string(forKey: "captureTo") else { return }
+        let delay = UserDefaults.standard.double(forKey: "captureDelay")
+        Task {
+            try? await Task.sleep(for: .seconds(delay > 0 ? delay : 4))
+            if let data = windowPNG() { try? data.write(to: URL(fileURLWithPath: path)) }
+            NSApp.terminate(nil)
         }
     }
 

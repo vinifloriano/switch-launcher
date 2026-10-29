@@ -9,13 +9,15 @@ extension AppModel {
             let loaded = games.filter(isLoaded).count
             return [MenuSection(
                 id: "cards", title: "Virtual Game Cards",
-                footnote: "\(loaded) of \(games.count) loaded. Ejected software leaves the HOME Menu but stays in All Software.",
+                footnote: "\(loaded) of \(games.count) loaded. Ejected software leaves the HOME Menu but stays in All Software. Press + for a card's options.",
                 items: games.map { game in
-                    MenuItem(
+                    let running = launcher.runningGameID == game.id
+                    return MenuItem(
                         id: game.id,
                         title: game.title,
-                        subtitle: isLoaded(game) ? "Loaded on this system" : "Ejected",
+                        subtitle: running ? "Playing now" : (isLoaded(game) ? "Loaded on this system" : "Ejected"),
                         image: IconCache.shared.icon(for: game),
+                        options: { [unowned self] in openOptions(for: game) },
                         kind: .toggle(isLoaded(game)) { [unowned self] in setLoaded(game, $0) }
                     )
                 }

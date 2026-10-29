@@ -16,6 +16,7 @@
     <key>NSHumanReadableCopyright</key><string>© 2026 Vinicius Floriano. Not affiliated with Nintendo.</string>
     <key>NSDocumentsFolderUsageDescription</key><string>Switch Launcher looks for your game apps in folders you add to the library, such as Documents/Switch/apps.</string>
     <key>NSDesktopFolderUsageDescription</key><string>Switch Launcher shows screenshots from your Desktop in the Album.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key><string>Switch Launcher turns Bluetooth on and off and lists your paired controllers and headphones in System Settings.</string>
     <key>GCSupportsControllerUserInteraction</key><true/>
     <key>GCSupportedGameControllers</key>
     <array><dict><key>ProfileName</key><string>ExtendedGamepad</string></dict></array>

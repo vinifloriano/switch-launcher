@@ -278,6 +278,10 @@ public final class InputRouter {
         on(pad.leftThumbstickButton, .leftStick)
         on(pad.rightThumbstickButton, .rightStick)
         on(controller.physicalInputProfile.buttons[GCInputButtonShare], .capture)
+        // macOS treats HOME (the Guide/Xbox button) as a system gesture that opens the Games app.
+        // Ask for the press instead, so HOME comes back to the launcher.
+        pad.buttonHome?.preferredSystemGestureState = .disabled
+        controller.physicalInputProfile.buttons[GCInputButtonShare]?.preferredSystemGestureState = .disabled
         pad.buttonHome?.pressedChangedHandler = { [weak self] _, _, pressed in
             MainActor.assumeIsolated { self?.homeChanged(key, pressed: pressed) }
         }

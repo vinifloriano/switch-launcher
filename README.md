@@ -32,6 +32,9 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 - **Controllers**: player slots with lights and battery, Change Grip/Order (L + R), Find
   Controllers (vibration), Test Input Devices (live buttons, sticks with movement trails, analog
   triggers) and pairing.
+- **System Settings** modelled on the Switch 2: Airplane Mode, brightness, Bluetooth, Internet,
+  Parental Controls (PIN, daily play time limit), Data Management (drive usage bars, move software
+  to an external SSD), Users (Mac accounts and save data), Audio, Display, Notifications, Sleep Mode.
 - **Also**: Quick Settings (hold HOME), Capture to Album, Sleep Mode, in-app pages for Nintendo
   Switch Online, News and eShop, boot and launch animations, synthesized interface sounds.
 
@@ -116,8 +119,9 @@ make dist     # dist/Switch-Launcher-<version>.zip + .sha256
 | `SoundKit` | `UISoundPlayer`: interface sounds synthesized at startup |
 | `Features` | Screens and navigation; two-pane pages share `MenuModel` / `MenuView` |
 
-Launch options for checking screens: `-openScreen settings|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
-and `-launchGame <title>` to start a game directly.
+Launch options for checking screens: `-openScreen settings|settings:<section>|groups|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
+and `-launchGame <title>` to start a game directly. Add `-captureTo <file.png>` to save the window a few
+seconds later (`-captureDelay <seconds>`) and quit.
 
 Logs: `log stream --predicate 'subsystem == "dev.vinicius.switchlauncher"'`.
 Settings and play history live in `~/Library/Application Support/SwitchLauncher/`.

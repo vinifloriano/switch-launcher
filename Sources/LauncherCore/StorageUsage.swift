@@ -2,12 +2,15 @@ import Foundation
 import Observation
 
 /// Space on one disk, as Finder reports it.
-public struct VolumeUsage: Hashable, Sendable {
+public struct VolumeUsage: Hashable, Sendable, Identifiable {
     public let name: String
     public let url: URL
     public let total: Int64
     public let available: Int64
+    /// The Mac's own disk, as opposed to an external drive or card.
+    public var isInternal = true
 
+    public var id: String { url.path }
     public var used: Int64 { max(total - available, 0) }
 }
 
@@ -49,6 +52,8 @@ public final class StorageUsage {
     /// Names of titles seen in the library, by title ID, so save data still has a name once its
     /// software is deleted.
     public private(set) var knownTitles: [String: String] = [:]
+    /// Software being moved to another drive, by game id: progress 0...1.
+    public private(set) var moving: [String: Double] = [:]
     @ObservationIgnored private var pending: [Game] = []
     @ObservationIgnored private let titlesFile = AppPaths.supportDirectory.appendingPathComponent("titles.json")
     @ObservationIgnored private let sizesFile: URL
@@ -171,7 +176,8 @@ public final class StorageUsage {
     /// The disk that holds `url`.
     public nonisolated static func volume(for url: URL) -> VolumeUsage? {
         let keys: Set<URLResourceKey> = [.volumeURLKey, .volumeLocalizedNameKey, .volumeTotalCapacityKey,
-                                         .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]
+                                         .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey,
+                                         .volumeIsInternalKey]
         guard let values = try? url.resourceValues(forKeys: keys),
               let total = values.volumeTotalCapacity else { return nil }
         // "Important usage" counts purgeable space as free, like Finder; network shares don't report it.
@@ -179,7 +185,25 @@ public final class StorageUsage {
         return VolumeUsage(name: values.volumeLocalizedName ?? url.lastPathComponent,
                            url: values.volume ?? url,
                            total: Int64(total),
-                           available: available)
+                           available: available,
+                           isInternal: values.volumeIsInternal ?? true)
+    }
+
+    /// Drives software can live on: the Mac's disk and writable local drives (external SSDs,
+    /// cards). Network shares and read-only disk images are left out.
+    public nonisolated static func drives() -> [VolumeUsage] {
+        let keys: [URLResourceKey] = [.volumeIsLocalKey, .volumeIsReadOnlyKey, .volumeIsBrowsableKey]
+        let mounted = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys,
+                                                            options: [.skipHiddenVolumes]) ?? []
+        var result: [VolumeUsage] = []
+        for url in mounted {
+            guard let values = try? url.resourceValues(forKeys: Set(keys)),
+                  values.volumeIsLocal == true, values.volumeIsReadOnly != true, values.volumeIsBrowsable != false,
+                  let volume = volume(for: url), !result.contains(where: { $0.url == volume.url }) else { continue }
+            result.append(volume)
+        }
+        // The Mac's disk first.
+        return result.sorted { ($0.url.path == "/" ? 0 : 1, $0.name) < ($1.url.path == "/" ? 0 : 1, $1.name) }
     }
 
     /// Where an nxnative port keeps its save data and caches:
@@ -202,6 +226,68 @@ public final class StorageUsage {
     /// The packer's record of what went into an app: `<name>.app.key` beside it.
     nonisolated static func keyFile(for app: URL) -> URL {
         app.deletingLastPathComponent().appendingPathComponent(app.lastPathComponent + ".key")
+    }
+
+    public enum MoveError: LocalizedError {
+        case exists, incomplete
+        public var errorDescription: String? {
+            switch self {
+            case .exists: "There's already software with that name there."
+            case .incomplete: "The copy didn't match the original, so nothing was deleted."
+            }
+        }
+    }
+
+    /// Moves an app into `folder` (on another drive): copies it with its `.app.key`, checks the
+    /// copy has every byte, then deletes the original. Returns the new location.
+    public func move(_ game: Game, to folder: URL) async throws -> URL {
+        let destination = folder.appendingPathComponent(game.url.lastPathComponent, isDirectory: true)
+        guard !FileManager.default.fileExists(atPath: destination.path) else { throw MoveError.exists }
+        moving[game.id] = 0
+        defer { moving[game.id] = nil }
+        let source = game.url
+        let total = await Task.detached(priority: .utility) { Self.contentSize(of: source) }.value
+        let watcher = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                let copied = await Task.detached(priority: .background) { Self.contentSize(of: destination) }.value
+                if !Task.isCancelled, total > 0 { self?.moving[game.id] = min(Double(copied) / Double(total), 0.99) }
+            }
+        }
+        defer { watcher.cancel() }
+        try await Task.detached(priority: .utility) {
+            let fm = FileManager.default
+            try fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            do {
+                try fm.copyItem(at: source, to: destination)
+                guard Self.contentSize(of: destination) == total else { throw MoveError.incomplete }
+            } catch {
+                try? fm.removeItem(at: destination)
+                throw error
+            }
+            let key = Self.keyFile(for: source)
+            if fm.fileExists(atPath: key.path) {
+                try? fm.copyItem(at: key, to: Self.keyFile(for: destination))
+                try? fm.removeItem(at: key)
+            }
+            try fm.removeItem(at: source)
+        }.value
+        forget(game)
+        return destination
+    }
+
+    /// Bytes of file content in a file or folder (what a copy has to reproduce exactly).
+    nonisolated static func contentSize(of url: URL) -> Int64 {
+        let keys: [URLResourceKey] = [.fileSizeKey, .isRegularFileKey]
+        guard let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) else {
+            return Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        }
+        var total: Int64 = 0
+        for case let file as URL in enumerator {
+            guard let values = try? file.resourceValues(forKeys: Set(keys)), values.isRegularFile == true else { continue }
+            total += Int64(values.fileSize ?? 0)
+        }
+        return total
     }
 
     /// Space a file or folder takes on disk.

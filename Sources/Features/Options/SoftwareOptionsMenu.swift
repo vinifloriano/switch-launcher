@@ -31,7 +31,7 @@ extension AppModel {
                          subtitle: (usage.map { $0.data > 0 ? ByteFormatter.string($0.data) : "None" } ?? measuring)
                              + " · kept when the software is deleted",
                          symbol: "person.crop.square.filled.and.at.rectangle",
-                         kind: .link { [unowned self] in push(.menu(makeSettingsMenu(startingAt: "saves"))) }),
+                         kind: .link { [unowned self] in push(.menu(makeSettingsMenu(startingAt: "users"))) }),
             ]
             if let volume = StorageUsage.volume(for: game.url) {
                 data.append(MenuItem(id: "free", title: "Free Space", subtitle: volume.name,
@@ -47,6 +47,13 @@ extension AppModel {
             if running {
                 data.append(MenuItem(id: "close", title: "Close Software", symbol: "xmark.circle.fill", isDestructive: true,
                                      kind: .action { [unowned self] in confirmClose(game) }))
+            }
+            if !isAddedApp(game), StorageUsage.drives().count > 1 {
+                let moving = storage.moving[game.id]
+                data.append(MenuItem(id: "move", title: "Move Software",
+                                     subtitle: moving.map { "Moving… \(Int($0 * 100))%" } ?? "Move to another drive, such as an external SSD.",
+                                     symbol: "arrow.right.doc.on.clipboard",
+                                     kind: .action { [unowned self] in confirmMove(game) }))
             }
             if isAddedApp(game) {
                 data.append(MenuItem(id: "remove", title: "Remove from Library", subtitle: "The app itself stays where it is.",
@@ -79,6 +86,7 @@ extension AppModel {
 
     /// Delete Software (moves the app to the Trash), or Remove from Library for an added app.
     func confirmDelete(_ game: Game) {
+        guard checkPIN("delete software") else { return }
         guard launcher.runningGameID != game.id else {
             sound.play(.error)
             showToast("Close \(game.title) first.", symbol: "exclamationmark.triangle.fill")
@@ -110,6 +118,7 @@ extension AppModel {
 
     /// Deleting save data can't be taken back in the launcher, so it asks twice.
     func confirmDeleteSave(_ save: SaveData) {
+        guard checkPIN("delete save data") else { return }
         let title = saveTitle(save)
         if let game = library.games.first(where: { $0.titleID?.uppercased() == save.titleID }),
            launcher.runningGameID == game.id {

@@ -148,7 +148,7 @@ struct HomeView: View {
 
     private func tileColumn(_ item: HomeItem, index: Int, count: Int, isSelected: Bool) -> some View {
         VStack(spacing: ui(14)) {
-            title(item.title, index: index, count: count)
+            title(isRunning(item) ? "\(item.title)  ·  Playing" : item.title, index: index, count: count)
                 .frame(width: ui(tileSize))
                 .opacity(isSelected ? 1 : 0)
 
@@ -174,6 +174,11 @@ struct HomeView: View {
             }
             .onTapGesture { home.tapSoftware(index) }
         }
+    }
+
+    private func isRunning(_ item: HomeItem) -> Bool {
+        if case .game(let game) = item { return app.launcher.runningGameID == game.id }
+        return false
     }
 
     /// The selected software's name, centred over its tile. On the first and last tiles a title
@@ -214,22 +219,32 @@ struct HomeView: View {
 
     // MARK: Dock
 
+    /// The shortcut icons sit together on one rounded bar, as on the Switch 2. The selected
+    /// shortcut's name floats above the bar.
     private var dock: some View {
-        HStack(spacing: ui(20)) {
+        HStack(spacing: ui(18)) {
             ForEach(Array(DockItem.allCases.enumerated()), id: \.element.id) { index, item in
                 let isSelected = home.row == .dock && home.dockIndex == index
-                VStack(spacing: ui(12)) {
-                    Text(item.title)
-                        .font(ui.font(17, .medium))
-                        .foregroundStyle(theme.accent)
-                        .fixedSize()
-                        .frame(width: ui(70))
-                        .opacity(isSelected ? 1 : 0)
-                    CircleIconButton(symbol: item.symbol, tint: item.tint, diameter: ui(70), isSelected: isSelected)
-                        .onTapGesture { home.tapDock(index) }
-                }
+                CircleIconButton(symbol: item.symbol, tint: item.tint, diameter: ui(66), isSelected: isSelected)
+                    .overlay(alignment: .top) {
+                        Text(item.title)
+                            .font(ui.font(17, .medium))
+                            .foregroundStyle(theme.accent)
+                            .fixedSize()
+                            .offset(y: -ui(48))
+                            .opacity(isSelected ? 1 : 0)
+                    }
+                    .onTapGesture { home.tapDock(index) }
             }
         }
+        .padding(.horizontal, ui(22))
+        .padding(.vertical, ui(14))
+        .background(
+            Capsule(style: .continuous)
+                .fill(theme.dockBar)
+                .shadow(color: theme.shadow.opacity(0.5), radius: ui(2), y: ui(1))
+        )
+        .padding(.top, ui(44))
     }
 
     // MARK: Footer

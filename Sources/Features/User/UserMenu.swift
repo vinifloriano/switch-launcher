@@ -13,15 +13,18 @@ extension AppModel {
             ),
             app: self
         ) { [unowned self] in
-            [profileSection, activitySection]
+            [userSettingsSection, activitySection]
         }
     }
 
-    private var profileSection: MenuSection {
+    private var userSettingsSection: MenuSection {
         let s = settings.value
+        let mac = MacUsers.all().first(where: \.isCurrent)
         return MenuSection(
-            id: "profile", title: "Profile", symbol: "person.crop.circle.fill",
+            id: "userSettings", title: "User Settings", symbol: "person.crop.circle.badge.checkmark",
             items: [
+                MenuItem(id: "card", title: s.userName, subtitle: "Your profile on this launcher",
+                         image: avatarImage(diameter: 56), kind: .info("")),
                 MenuItem(id: "name", title: "Nickname", subtitle: s.userName, symbol: "pencil",
                          kind: .action { [unowned self] in editNickname() }),
                 MenuItem(id: "icon", title: "Icon", kind: .choice(
@@ -36,6 +39,11 @@ extension AppModel {
                 ) { [unowned self] in
                     settings.value.avatarColorIndex = $0
                 }),
+                .header("Mac Account"),
+                MenuItem(id: "macUser", title: mac?.fullName ?? NSFullUserName(),
+                         subtitle: "Signed in as \(NSUserName()) · save data is kept per Mac user",
+                         image: mac?.picture ?? initialsImage(mac?.fullName ?? NSFullUserName()),
+                         kind: .link { [unowned self] in push(.menu(makeSettingsMenu(startingAt: "users"))) }),
             ]
         )
     }

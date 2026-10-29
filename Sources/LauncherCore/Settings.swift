@@ -37,6 +37,23 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
     public var nintendoButtonLayout = true
     /// Look for a newer launcher release on GitHub at startup and every few hours.
     public var checkForUpdates = true
+    /// Airplane Mode: Wi-Fi and Bluetooth were turned off by the launcher, and what to restore.
+    public var airplaneMode = false
+    public var wifiBeforeAirplane = true
+    public var bluetoothBeforeAirplane = true
+    /// Messages the launcher shows.
+    public var notifyUpdates = true
+    public var notifyDownloads = true
+    public var notifyPlayTime = true
+    /// Minutes without input on the HOME Menu before Sleep Mode; 0 never.
+    public var autoSleepMinutes = 0
+    /// Skip the startup and software launch animations.
+    public var reduceMotion = false
+    /// Parental Controls: SHA-256 of the PIN (empty when off) and a daily play time limit in minutes (0 none).
+    public var parentalPINHash = ""
+    public var dailyLimitMinutes = 0
+    /// Groups of software, shown under All Software › Groups.
+    public var groups: [SoftwareGroup] = []
 
     public init() {}
 
@@ -78,6 +95,30 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
         homeButtonReturnsToLauncher = value(.homeButtonReturnsToLauncher, d.homeButtonReturnsToLauncher)
         nintendoButtonLayout = value(.nintendoButtonLayout, d.nintendoButtonLayout)
         checkForUpdates = value(.checkForUpdates, d.checkForUpdates)
+        airplaneMode = value(.airplaneMode, d.airplaneMode)
+        wifiBeforeAirplane = value(.wifiBeforeAirplane, d.wifiBeforeAirplane)
+        bluetoothBeforeAirplane = value(.bluetoothBeforeAirplane, d.bluetoothBeforeAirplane)
+        notifyUpdates = value(.notifyUpdates, d.notifyUpdates)
+        notifyDownloads = value(.notifyDownloads, d.notifyDownloads)
+        notifyPlayTime = value(.notifyPlayTime, d.notifyPlayTime)
+        autoSleepMinutes = value(.autoSleepMinutes, d.autoSleepMinutes)
+        reduceMotion = value(.reduceMotion, d.reduceMotion)
+        parentalPINHash = value(.parentalPINHash, d.parentalPINHash)
+        dailyLimitMinutes = value(.dailyLimitMinutes, d.dailyLimitMinutes)
+        groups = value(.groups, d.groups)
+    }
+}
+
+/// A named set of software, like the console's groups.
+public struct SoftwareGroup: Codable, Equatable, Identifiable, Sendable {
+    public var id: String
+    public var name: String
+    public var gameIDs: [String]
+
+    public init(id: String = UUID().uuidString, name: String, gameIDs: [String] = []) {
+        self.id = id
+        self.name = name
+        self.gameIDs = gameIDs
     }
 }
 

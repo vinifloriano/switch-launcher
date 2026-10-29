@@ -28,6 +28,8 @@ public struct Theme: Equatable, Sendable {
     public let glyphBackground: Color
     public let glyphForeground: Color
     public let shadow: Color
+    /// The rounded bar the HOME Menu's shortcut icons sit on.
+    public let dockBar: Color
 
     public static let basicWhite = Theme(
         name: "Basic White",
@@ -43,7 +45,8 @@ public struct Theme: Equatable, Sendable {
         destructive: Color(hex: 0xE6302F),
         glyphBackground: Color(hex: 0x2D2D2D),
         glyphForeground: .white,
-        shadow: .black.opacity(0.18)
+        shadow: .black.opacity(0.18),
+        dockBar: Color(hex: 0xD9D9D9)
     )
 
     public static let basicBlack = Theme(
@@ -60,7 +63,8 @@ public struct Theme: Equatable, Sendable {
         destructive: Color(hex: 0xFF5A52),
         glyphBackground: .white,
         glyphForeground: Color(hex: 0x2D2D2D),
-        shadow: .black.opacity(0.45)
+        shadow: .black.opacity(0.45),
+        dockBar: Color(hex: 0x232323)
     )
 }
 
