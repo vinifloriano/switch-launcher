@@ -50,6 +50,10 @@ directly. Games already in the store at the same version are skipped (use `--for
 so an interrupted run can simply be started again. `--jobs` uploads several games at once; their
 catalog updates are written one after another, so none are lost.
 
+`--remove ID` takes a game out of the store with its archive, for example when a port is replaced
+by one with another bundle id (`--remove org.macnativegames.botw`). It can run on its own or with
+games to publish.
+
 `--endpoint URL --user NAME` uploads to any S3 bucket instead (multipart, password from
 `STORE_PASSWORD`). `--max-rate MB` caps the upload speed in either mode.
 

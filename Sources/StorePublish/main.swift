@@ -29,6 +29,8 @@ struct Options {
     var force = false
     /// Upload speed limit in bytes per second (all jobs together), nil for none.
     var maxRate: Double?
+    /// Catalog ids to take out of the store, with their archives.
+    var remove: [String] = []
 
     static let usage = """
     usage: store-publish (--endpoint URL --user NAME | --to DIR) [options] [APP...]
@@ -37,6 +39,7 @@ struct Options {
       --jobs N        upload N games at once (default 1)
       --force         re-upload games already in the store at the same version
       --max-rate MB   limit the upload speed to MB megabytes per second (all jobs together)
+      --remove ID     take the game with this id out of the store, archive included (repeatable)
       --bucket NAME   default switch-games
       --region NAME   default us-east-1
       The password is read from STORE_PASSWORD, or asked for.
@@ -52,6 +55,7 @@ struct Options {
         var jobs = 1
         var force = false
         var maxRate: Double?
+        var remove: [String] = []
         var folder: URL?
         var iterator = arguments.makeIterator()
         while let argument = iterator.next() {
@@ -65,11 +69,12 @@ struct Options {
             case "--jobs": jobs = max(1, Int(iterator.next() ?? "") ?? 1)
             case "--force": force = true
             case "--max-rate": maxRate = iterator.next().flatMap(Double.init).map { $0 * 1_000_000 }
+            case "--remove": iterator.next().map { remove.append($0) }
             case "-h", "--help": return nil
             default: apps.append(URL(fileURLWithPath: argument))
             }
         }
-        guard !(apps.isEmpty && scanFolders.isEmpty) else { return nil }
+        guard !(apps.isEmpty && scanFolders.isEmpty && remove.isEmpty) else { return nil }
         let target: Target
         if let folder {
             target = .folder(folder)
@@ -83,7 +88,7 @@ struct Options {
             target = .s3(endpoint: endpoint, user: user, password: password)
         }
         return Options(target: target, bucket: bucket, region: region, apps: apps, scanFolders: scanFolders,
-                       jobs: jobs, force: force, maxRate: maxRate)
+                       jobs: jobs, force: force, maxRate: maxRate, remove: remove)
     }
 }
 
@@ -131,7 +136,10 @@ struct FolderStore: Store {
     }
 
     func delete(_ key: String) async throws {
-        try? FileManager.default.removeItem(at: url(key))
+        let file = url(key)
+        try? FileManager.default.removeItem(at: file)
+        // A game's folder goes once its last file has (rmdir only removes empty folders).
+        rmdir(file.deletingLastPathComponent().path)
     }
 
     func writeArchive(_ key: String, chunks: AsyncThrowingStream<Data, Error>, maxRate: Double?,
@@ -361,6 +369,20 @@ actor CatalogWriter {
         catalog.games.first { $0.id == id }
     }
 
+    /// Removes the entry and uploads the catalog. Returns the removed entry.
+    func remove(_ id: String) async throws -> StoreGame? {
+        guard let entry = entry(for: id) else { return nil }
+        catalog.games.removeAll { $0.id == id }
+        let before = lastWrite
+        let write = Task {
+            _ = try? await before?.value
+            try await self.put()
+        }
+        lastWrite = write
+        try await write.value
+        return entry
+    }
+
     /// Adds or replaces the entry and uploads the catalog. Returns the replaced entry.
     func upsert(_ entry: StoreGame) async throws -> StoreGame? {
         let previous = catalog.games.first { $0.id == entry.id }
@@ -441,11 +463,30 @@ do {
 }
 line("Catalog has \(catalog.games.count) games.")
 let writer = CatalogWriter(catalog: catalog, store: store)
+var failures = 0
+
+for id in options.remove {
+    do {
+        guard let removed = try await writer.remove(id) else {
+            line("✗ \(id): not in the store")
+            failures += 1
+            continue
+        }
+        try? await store.delete(removed.archive)
+        // An icon another entry still uses stays.
+        if let icon = removed.icon, await writer.catalog.games.allSatisfy({ $0.icon != icon }) {
+            try? await store.delete(icon)
+        }
+        line("✓ Removed \(removed.title) (\(id))")
+    } catch {
+        line("✗ \(id): \(error)")
+        failures += 1
+    }
+}
 
 // Explicit apps, then everything the launcher would recognise in the scanned folders.
 var work: [(URL, Game)] = []
 var seen = Set<String>()
-var failures = 0
 for app in options.apps {
     guard let game = GameScanner().game(at: app, requireNativeMarker: false) else {
         line("✗ \(app.lastPathComponent): not an app bundle")
