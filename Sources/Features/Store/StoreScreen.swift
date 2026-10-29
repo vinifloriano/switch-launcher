@@ -128,7 +128,8 @@ public final class StoreModel: InputResponder {
         let size = ByteFormatter.string(game.archiveSize)
         app.confirm(
             message: update ? "Update \(game.title)?" : "Download \(game.title)?",
-            detail: "\(size) download · installs to \(folder.path)",
+            detail: "\(size) download · installs to \(folder.path)"
+                + (app.storage.hasSaveData(titleID: game.titleID) ? "\nYour save data on this Mac will be used." : ""),
             confirmTitle: update ? "Update" : "Download"
         ) { [weak self] in
             guard let self else { return }
@@ -290,6 +291,7 @@ struct StoreScreen: View {
         parts.append("\(ByteFormatter.string(game.archiveSize)) download")
         switch model.status(of: game) {
         case .installed: parts.append("Installed")
+        case .available where model.app.storage.hasSaveData(titleID: game.titleID): parts.append("Save data on this Mac")
         case .update: parts.append("Update available")
         case .failed(let message): parts.append(message)
         default: break

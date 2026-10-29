@@ -111,7 +111,7 @@ public final class AppModel {
     }
 
     /// `-launchGame <title>` starts a game at launch.
-    /// `-openScreen settings|data|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
+    /// `-openScreen settings|data|saves|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
     /// (handy for screenshots and UI checks).
     private func openScreenFromLaunchArgument() {
         if let title = UserDefaults.standard.string(forKey: "launchGame"),
@@ -124,6 +124,7 @@ public final class AppModel {
         switch screen {
         case "settings": openDock(.settings)
         case "data": push(.menu(makeSettingsMenu(startingAt: "data")))
+        case "saves": push(.menu(makeSettingsMenu(startingAt: "saves")))
         case "library": openLibrary()
         case "album": openDock(.album)
         case "user": openUserPage()
@@ -179,6 +180,7 @@ public final class AppModel {
 
     public func reloadLibrary() async {
         await library.reload(folders: settings.libraryFolderURLs, extraApps: settings.extraAppURLs)
+        storage.remember(library.games)
         launcher.adoptRunning(from: library.games)
         IconCache.shared.load(homeGames + library.games)
     }
@@ -376,7 +378,9 @@ public final class AppModel {
             settings.value.libraryFolders.append(folder)
         }
         sound.play(.select)
-        showToast("\(game.title) is ready to play.", symbol: "checkmark.circle.fill")
+        showToast(storage.hasSaveData(titleID: game.titleID)
+                  ? "\(game.title) is ready to play. Your save data is back."
+                  : "\(game.title) is ready to play.", symbol: "checkmark.circle.fill")
         Task { await reloadLibrary() }
     }
 

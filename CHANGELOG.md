@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.0 — 2026-10-29
+
+- **Save Data** in System Settings: every title's save data on this Mac, installed or not, with its
+  size. Deleting save data asks twice. Save data stays when software is deleted and is picked up
+  again when the software is reinstalled, from the Game Store too; the store says so before the
+  download and once it's installed.
+- Software options link to Save Data instead of deleting it directly.
+
 ## 1.2.0 — 2026-10-29
 
 - **Delete software**: software options › Data Management has Delete Software (moves the app and its

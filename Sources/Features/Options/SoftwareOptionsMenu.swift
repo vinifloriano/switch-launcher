@@ -27,8 +27,11 @@ extension AppModel {
             let measuring = "Measuring…"
             var data = [
                 MenuItem(id: "appSize", title: "Software", kind: .info(usage.map { ByteFormatter.string($0.app) } ?? measuring)),
-                MenuItem(id: "dataSize", title: "Save Data", subtitle: "Saves, shader caches and temporary files.",
-                         kind: .info(usage.map { $0.data > 0 ? ByteFormatter.string($0.data) : "None" } ?? measuring)),
+                MenuItem(id: "dataSize", title: "Save Data",
+                         subtitle: (usage.map { $0.data > 0 ? ByteFormatter.string($0.data) : "None" } ?? measuring)
+                             + " · kept when the software is deleted",
+                         symbol: "person.crop.square.filled.and.at.rectangle",
+                         kind: .link { [unowned self] in push(.menu(makeSettingsMenu(startingAt: "saves"))) }),
             ]
             if let volume = StorageUsage.volume(for: game.url) {
                 data.append(MenuItem(id: "free", title: "Free Space", subtitle: volume.name,
@@ -44,11 +47,6 @@ extension AppModel {
             if running {
                 data.append(MenuItem(id: "close", title: "Close Software", symbol: "xmark.circle.fill", isDestructive: true,
                                      kind: .action { [unowned self] in confirmClose(game) }))
-            }
-            if StorageUsage.dataFolder(for: game) != nil {
-                data.append(MenuItem(id: "deleteData", title: "Delete Save Data", subtitle: "Your progress in this software will be lost.",
-                                     symbol: "trash", isDestructive: true,
-                                     kind: .action { [unowned self] in confirmDeleteData(game) }))
             }
             if isAddedApp(game) {
                 data.append(MenuItem(id: "remove", title: "Remove from Library", subtitle: "The app itself stays where it is.",
@@ -96,11 +94,13 @@ extension AppModel {
         }
         let size = storage.software[game.id].map { " (\(ByteFormatter.string($0.app)))" } ?? ""
         confirm(message: "Delete \(game.title)?",
-                detail: "The software\(size) is moved to the Trash. Save data is kept, so you can pick up where you left off if you install it again.",
+                detail: "The software\(size) is moved to the Trash. Save data stays on this Mac and comes back when you install it again, from the Game Store too.",
                 confirmTitle: "Delete") { [unowned self] in
             do {
                 try StorageUsage.trashSoftware(game)
-                softwareRemoved(game, message: "\(game.title) was moved to the Trash.")
+                softwareRemoved(game, message: storage.hasSaveData(titleID: game.titleID)
+                                ? "\(game.title) was moved to the Trash. Its save data was kept."
+                                : "\(game.title) was moved to the Trash.")
             } catch {
                 sound.play(.error)
                 showToast("Couldn't delete \(game.title).", symbol: "exclamationmark.triangle.fill")
@@ -108,24 +108,39 @@ extension AppModel {
         }
     }
 
-    func confirmDeleteData(_ game: Game) {
-        guard launcher.runningGameID != game.id else {
+    /// Deleting save data can't be taken back in the launcher, so it asks twice.
+    func confirmDeleteSave(_ save: SaveData) {
+        let title = saveTitle(save)
+        if let game = library.games.first(where: { $0.titleID?.uppercased() == save.titleID }),
+           launcher.runningGameID == game.id {
             sound.play(.error)
             showToast("Close \(game.title) first.", symbol: "exclamationmark.triangle.fill")
             return
         }
-        confirm(message: "Delete save data for \(game.title)?",
-                detail: "Your progress in this software will be lost. The data is moved to the Trash.",
-                confirmTitle: "Delete") { [unowned self] in
-            do {
-                try StorageUsage.trashData(game)
-                storage.remeasure(game)
-                showToast("Save data was moved to the Trash.", symbol: "trash.fill")
-            } catch {
-                sound.play(.error)
-                showToast("Couldn't delete the save data.", symbol: "exclamationmark.triangle.fill")
+        confirm(message: "Delete save data for \(title)?",
+                detail: "\(ByteFormatter.string(save.size)) · your progress, settings and shader caches for this software.",
+                confirmTitle: "Continue") { [unowned self] in
+            confirm(message: "Are you sure?",
+                    detail: "All progress in \(title) will be lost. The save data is moved to the Trash.",
+                    confirmTitle: "Delete Save Data") { [unowned self] in
+                do {
+                    try storage.trash(save)
+                    library.games.filter { $0.titleID?.uppercased() == save.titleID }.forEach(storage.remeasure)
+                    showToast("Save data for \(title) was moved to the Trash.", symbol: "trash.fill")
+                } catch {
+                    sound.play(.error)
+                    showToast("Couldn't delete the save data.", symbol: "exclamationmark.triangle.fill")
+                }
             }
         }
+    }
+
+    /// Name of the software a save belongs to, even once that software is deleted.
+    func saveTitle(_ save: SaveData) -> String {
+        library.games.first { $0.titleID?.uppercased() == save.titleID }?.title
+            ?? store.catalog.games.first { $0.titleID?.uppercased() == save.titleID }?.title
+            ?? storage.knownTitles[save.titleID]
+            ?? save.titleID
     }
 
     private func softwareRemoved(_ game: Game, message: String) {

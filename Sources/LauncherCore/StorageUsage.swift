@@ -20,15 +20,78 @@ public struct SoftwareUsage: Hashable, Sendable {
     public var total: Int64 { app + data }
 }
 
+/// Save data of one title, installed or not: `~/Library/Application Support/nxnative/<title ID>`.
+public struct SaveData: Identifiable, Hashable, Sendable {
+    public let titleID: String
+    public let url: URL
+    public let size: Int64
+
+    public var id: String { titleID }
+}
+
 /// Measures and frees the space software takes. Sizes are measured in the background on request
 /// and kept for the session, since walking a 15 GB bundle takes a moment.
 @MainActor @Observable
 public final class StorageUsage {
     public private(set) var software: [String: SoftwareUsage] = [:]
     public private(set) var isMeasuring = false
+    /// Every title's save data on this Mac, largest first. Filled by `measureSaves()`.
+    public private(set) var saves: [SaveData] = []
+    /// Names of titles seen in the library, by title ID, so save data still has a name once its
+    /// software is deleted.
+    public private(set) var knownTitles: [String: String] = [:]
     @ObservationIgnored private var pending: [Game] = []
+    @ObservationIgnored private let titlesFile = AppPaths.supportDirectory.appendingPathComponent("titles.json")
 
-    public init() {}
+    public init() {
+        if let data = try? Data(contentsOf: titlesFile),
+           let titles = try? JSONDecoder().decode([String: String].self, from: data) {
+            knownTitles = titles
+        }
+    }
+
+    /// Remembers the names of these titles for their save data.
+    public func remember(_ games: [Game]) {
+        var titles = knownTitles
+        for game in games {
+            if let id = game.titleID?.uppercased(), !id.isEmpty { titles[id] = game.title }
+        }
+        guard titles != knownTitles else { return }
+        knownTitles = titles
+        if let data = try? JSONEncoder().encode(titles) { try? data.write(to: titlesFile, options: .atomic) }
+    }
+
+    /// Lists and measures the save data of every title, installed or not.
+    public func measureSaves() {
+        Task {
+            saves = await Task.detached(priority: .utility) { Self.findSaves() }.value
+        }
+    }
+
+    public func hasSaveData(titleID: String?) -> Bool {
+        guard let titleID, !titleID.isEmpty else { return false }
+        return FileManager.default.fileExists(atPath: Self.savesRoot.appendingPathComponent(titleID.uppercased()).path)
+    }
+
+    /// Moves one title's save data to the Trash.
+    public func trash(_ save: SaveData) throws {
+        try FileManager.default.trashItem(at: save.url, resultingItemURL: nil)
+        saves.removeAll { $0.titleID == save.titleID }
+    }
+
+    nonisolated static var savesRoot: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("nxnative", isDirectory: true)
+    }
+
+    nonisolated static func findSaves() -> [SaveData] {
+        let folders = (try? FileManager.default.contentsOfDirectory(
+            at: savesRoot, includingPropertiesForKeys: [.isDirectoryKey], options: .skipsHiddenFiles)) ?? []
+        return folders
+            .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .map { SaveData(titleID: $0.lastPathComponent.uppercased(), url: $0, size: size(of: $0)) }
+            .sorted { $0.size > $1.size }
+    }
 
     /// Measures every title not measured yet.
     public func measure(_ games: [Game]) {
@@ -78,8 +141,7 @@ public final class StorageUsage {
     /// `~/Library/Application Support/nxnative/<title ID>`.
     public nonisolated static func dataFolder(for game: Game) -> URL? {
         guard let titleID = game.titleID, !titleID.isEmpty else { return nil }
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let url = base.appendingPathComponent("nxnative/\(titleID.uppercased())", isDirectory: true)
+        let url = savesRoot.appendingPathComponent(titleID.uppercased(), isDirectory: true)
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
@@ -95,12 +157,6 @@ public final class StorageUsage {
     /// The packer's record of what went into an app: `<name>.app.key` beside it.
     nonisolated static func keyFile(for app: URL) -> URL {
         app.deletingLastPathComponent().appendingPathComponent(app.lastPathComponent + ".key")
-    }
-
-    /// Moves the title's save data and caches to the Trash.
-    public nonisolated static func trashData(_ game: Game) throws {
-        guard let folder = dataFolder(for: game) else { return }
-        try FileManager.default.trashItem(at: folder, resultingItemURL: nil)
     }
 
     /// Space a file or folder takes on disk.

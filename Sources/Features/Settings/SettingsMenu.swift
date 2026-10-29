@@ -12,6 +12,7 @@ extension AppModel {
                 soundSection,
                 librarySection,
                 dataSection,
+                savesSection,
                 storeSection,
                 launcherSection,
                 controlsSection,
@@ -19,6 +20,7 @@ extension AppModel {
             ]
         }
         storage.measure(library.games)
+        storage.measureSaves()
         if let section, let index = menu.sections.firstIndex(where: { $0.id == section }) {
             menu.sectionIndex = index
         }
@@ -220,6 +222,26 @@ extension AppModel {
         return MenuSection(
             id: "data", title: "Data Management", symbol: "externaldrive.fill",
             footnote: "Select software to see its details or delete it. Deleted software and save data go to the Trash.",
+            items: items
+        )
+    }
+
+    /// Save Data: every title's saves on this Mac, installed or not. Deleting asks twice.
+    private var savesSection: MenuSection {
+        let saves = storage.saves
+        var items = [MenuItem(id: "savesTotal", title: "Total", subtitle: "\(saves.count) titles",
+                              kind: .info(ByteFormatter.string(saves.reduce(0) { $0 + $1.size })))]
+        items += saves.map { save in
+            let game = library.games.first { $0.titleID?.uppercased() == save.titleID }
+            return MenuItem(id: "save:" + save.titleID, title: saveTitle(save),
+                            subtitle: "\(game == nil ? "Not installed" : "Installed") · \(ByteFormatter.string(save.size))",
+                            image: game.flatMap { IconCache.shared.icon(for: $0) },
+                            symbol: game == nil ? "externaldrive.badge.person.crop" : nil,
+                            kind: .action { [unowned self] in confirmDeleteSave(save) })
+        }
+        return MenuSection(
+            id: "saves", title: "Save Data", symbol: "person.crop.square.filled.and.at.rectangle",
+            footnote: "Save data stays on this Mac when you delete software, and comes back when you install it again, from the Game Store too. Select a title to delete its save data.",
             items: items
         )
     }
