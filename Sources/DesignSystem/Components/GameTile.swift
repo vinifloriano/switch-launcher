@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Square software tile with the game's cover icon.
-public struct GameTile: View, @MainActor Equatable {
+public struct GameTile: View, @preconcurrency Equatable {
     let image: NSImage?
     let title: String
     let size: CGFloat

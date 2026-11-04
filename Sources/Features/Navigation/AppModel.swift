@@ -14,7 +14,7 @@ public protocol InputResponder: AnyObject {
 
 /// Screens pushed on top of the HOME Menu.
 @MainActor
-public enum Route: @MainActor Identifiable {
+public enum Route: @preconcurrency Identifiable {
     case library(LibraryModel)
     case menu(MenuModel)
     case album(AlbumModel)

@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Left-hand category entry in two-pane pages (System Settings, software options...).
-public struct SidebarRow: View, @MainActor Equatable {
+public struct SidebarRow: View, @preconcurrency Equatable {
     let title: String
     let symbol: String?
     let isCurrent: Bool
@@ -160,7 +160,7 @@ struct LevelSlider: View {
 }
 
 /// A row in the right-hand pane: optional icon, title + subtitle, accessory value.
-public struct ItemRow: View, @MainActor Equatable {
+public struct ItemRow: View, @preconcurrency Equatable {
     let title: String
     let subtitle: String?
     let image: NSImage?

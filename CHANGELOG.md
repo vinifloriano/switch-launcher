@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.10.1 — 2026-11-04
+
+- **Swift 6.0 build compatibility:** use `@preconcurrency` protocol conformances supported by the
+  macOS 15 GitHub runner, while preserving main-actor safety on newer Swift toolchains.
+
 ## 1.10.0 — 2026-11-04
 
 - **Save backups and restore:** create timestamped snapshots for one title or every save, choose an
