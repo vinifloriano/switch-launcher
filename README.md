@@ -16,9 +16,13 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 
 [Watch the two-minute demo in 720p](Demo.mp4) (H.264/AAC, about 68 MB).
 
-| System Settings | Test Input Devices |
+| HOME Menu | All Software | System Settings |
+|---|---|---|
+| ![HOME Menu](docs/screenshots/home.png) | ![All Software](docs/screenshots/library.png) | ![System Settings](docs/screenshots/settings.png) |
+
+| Controllers | Virtual Game Cards |
 |---|---|
-| ![System Settings](docs/screenshots/settings.png) | ![Test Input Devices](docs/screenshots/tester.png) |
+| ![Controllers](docs/screenshots/controllers.png) | ![Virtual Game Cards](docs/screenshots/cards.png) |
 
 ## Features
 
