@@ -5,6 +5,13 @@ import LauncherCore
 import Observation
 import SwiftUI
 
+/// Images are completely constructed on the worker thread and treated as immutable afterward.
+/// AppKit does not declare `NSImage` Sendable in the macOS 15 SDK, so transfer that ownership
+/// explicitly instead of passing the mutable AppKit type directly through a detached task.
+private struct DecodedImage: @unchecked Sendable {
+    let value: NSImage?
+}
+
 /// Game icons, decoded off the main thread and downsampled to 512 px.
 /// Views read `icon(for:)`; it returns `nil` until the icon is ready and redraws when it is.
 @MainActor @Observable
@@ -32,8 +39,10 @@ final class IconCache {
         guard !pending.isEmpty else { return }
         Task {
             for game in pending {
-                let image = await Task.detached(priority: .userInitiated) { Self.decode(game) }.value
-                if let image { images[game.id] = image }
+                let decoded = await Task.detached(priority: .userInitiated) {
+                    DecodedImage(value: Self.decode(game))
+                }.value
+                if let image = decoded.value { images[game.id] = image }
                 resolved.insert(game.id)
             }
         }
@@ -95,9 +104,10 @@ struct AsyncThumbnail: View {
         .task(id: url) {
             let url = url
             let maxPixel = maxPixel
-            image = await Task.detached(priority: .utility) {
-                IconCache.largestImage(at: url, maxPixel: maxPixel)
+            let decoded = await Task.detached(priority: .utility) {
+                DecodedImage(value: IconCache.largestImage(at: url, maxPixel: maxPixel))
             }.value
+            image = decoded.value
         }
     }
 }

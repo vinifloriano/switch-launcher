@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.10.2 — 2026-11-04
+
+- **macOS 15 CI compatibility:** transfer fully-decoded, immutable image results through an
+  explicit Sendable ownership wrapper, supporting the older AppKit concurrency annotations used by
+  Xcode 16 without moving image work back onto the UI thread.
+
 ## 1.10.1 — 2026-11-04
 
 - **Swift 6.0 build compatibility:** use `@preconcurrency` protocol conformances supported by the
