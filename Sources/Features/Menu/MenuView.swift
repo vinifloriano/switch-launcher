@@ -19,32 +19,32 @@ struct MenuView: View {
             HStack(alignment: .top, spacing: 0) {
                 if !single {
                     ScrollViewReader { sidebar in
-                    ScrollView {
-                        VStack(spacing: ui(4)) {
-                            ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
-                                SidebarRow(
-                                    title: section.title,
-                                    symbol: section.symbol,
-                                    isCurrent: index == sectionIndex,
-                                    isFocused: model.focus == .sidebar && index == sectionIndex
-                                )
-                                .equatable()
-                                .id(index)
-                                .onTapGesture { model.tapSection(index) }
+                        ScrollView {
+                            VStack(spacing: ui(4)) {
+                                ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
+                                    SidebarRow(
+                                        title: section.title,
+                                        symbol: section.symbol,
+                                        isCurrent: index == sectionIndex,
+                                        isFocused: model.focus == .sidebar && index == sectionIndex
+                                    )
+                                    .equatable()
+                                    .scrollAnchor(index, vertical: ui(Self.scrollMargin))
+                                    .onTapGesture { model.tapSection(index) }
+                                }
                             }
+                            .padding(.vertical, ui(26))
+                            .padding(.horizontal, ui(30))
                         }
-                        .padding(.vertical, ui(26))
-                        .padding(.horizontal, ui(30))
-                    }
-                    .scrollIndicators(.never)
-                    .onChange(of: model.sectionIndex) { old, new in
-                        reveal(new, previous: old, count: sections.count, in: sidebar)
-                    }
-                    // Pages opened on a later section (e.g. from a game's options) start there.
-                    .task {
-                        guard model.sectionIndex > 0 else { return }
-                        sidebar.scrollTo(model.sectionIndex, anchor: .center)
-                    }
+                        .scrollIndicators(.never)
+                        .onChange(of: model.sectionIndex) { old, new in
+                            reveal(new, previous: old, count: sections.count, in: sidebar, with: sidebarFollower)
+                        }
+                        // Pages opened on a later section (e.g. from a game's options) start there.
+                        .task {
+                            guard model.sectionIndex > 0 else { return }
+                            sidebar.scrollTo(model.sectionIndex, anchor: .center)
+                        }
                     }
                     .frame(width: ui(360))
 
@@ -78,7 +78,7 @@ struct MenuView: View {
                                 .padding(.horizontal, ui(18))
                                 .padding(.top, index == 0 ? 0 : ui(26))
                                 .padding(.bottom, ui(6))
-                                .id(index)
+                                .scrollAnchor(index, vertical: ui(Self.scrollMargin))
                         } else {
                         ItemRow(
                             title: item.title,
@@ -92,7 +92,7 @@ struct MenuView: View {
                             onSlide: slideAction(for: item)
                         )
                         .equatable()
-                        .id(index)
+                        .scrollAnchor(index, vertical: ui(Self.scrollMargin))
                         .onTapGesture { model.tapItem(index) }
                         }
                     }
@@ -108,20 +108,28 @@ struct MenuView: View {
             }
             .scrollIndicators(.never)
             .onChange(of: model.itemIndex) { old, new in
-                reveal(new, previous: old, count: items.count, in: proxy)
+                reveal(new, previous: old, count: items.count, in: proxy, with: itemsFollower)
             }
             .onChange(of: model.sectionIndex) { _, _ in
+                itemsFollower.cancel()
                 proxy.scrollTo(0, anchor: .top)
             }
         }
     }
 
+    /// Room kept between the selection (and the row after it) and the top or bottom edge. It
+    /// matches the lists' padding, so the first and last rows show it too.
+    private static let scrollMargin: CGFloat = 26
+
     /// Scrolls so the selected row is visible with the next one in the direction of travel, so
     /// it never ends up against the edge (and under the bottom bar's line).
-    private func reveal(_ index: Int, previous: Int, count: Int, in proxy: ScrollViewProxy) {
+    private func reveal(_ index: Int, previous: Int, count: Int, in proxy: ScrollViewProxy, with follower: ScrollFollower) {
         let ahead = index > previous ? min(index + 1, count - 1) : max(index - 1, 0)
-        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(ahead) }
+        follower.scroll(proxy, to: ahead, duration: 0.15)
     }
+
+    @State private var sidebarFollower = ScrollFollower()
+    @State private var itemsFollower = ScrollFollower()
 
     private func accessory(for item: MenuItem) -> ItemAccessory {
         switch item.kind {

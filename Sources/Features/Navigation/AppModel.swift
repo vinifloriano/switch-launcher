@@ -93,7 +93,10 @@ public final class AppModel {
         settings.onChange = { [weak self] in self?.applySettings($0) }
 
         input.handler = { [weak self] in self?.handle($0) }
-        input.backgroundHomeHandler = { [weak self] in self?.returnFromGame() }
+        input.backgroundHomeHandler = { [weak self] in
+            Log.launcher.notice("HOME pressed with the launcher in the background")
+            self?.returnFromGame()
+        }
         // With no game running, a controller should always drive the launcher, even if another
         // app took focus.
         // `-backgroundInput NO` (used when checking screens and timing) leaves a controller to
@@ -101,7 +104,9 @@ public final class AppModel {
         let backgroundInput = UserDefaults.standard.object(forKey: "backgroundInput") == nil
             || UserDefaults.standard.bool(forKey: "backgroundInput")
         input.acceptsInputWhileInactive = { [weak self] in
-            guard backgroundInput, let self, launcher.session == nil else { return false }
+            // Presses during play belong to the game. Once the game isn't in front (back on the
+            // launcher, even if macOS didn't make it the active app), they drive the launcher.
+            guard backgroundInput, let self, !launcher.isGameInFront else { return false }
             // Asking LaunchServices to bring us forward is slow and macOS may refuse it, so don't
             // repeat it on every press of a held direction.
             if Date().timeIntervalSince(lastActivationRequest) > 3 {
@@ -317,13 +322,30 @@ public final class AppModel {
 
     /// HOME pressed on a controller while a game is in front.
     private func returnFromGame() {
-        guard settings.value.homeButtonReturnsToLauncher, launcher.session != nil else { return }
+        guard settings.value.homeButtonReturnsToLauncher else { return }
+        // A game started some other way (Finder, a previous launcher) is picked up here.
+        if launcher.session == nil { launcher.adoptRunning(from: library.games) }
+        guard launcher.session != nil else { return }
         keepGamesAppAway()
+        launcher.hideGame()
         bringToFront()
+        ensureInFront()
         dialog = nil
         stack.removeAll()
         home.selectRunningSoftware()
         sound.play(.home)
+    }
+
+    /// macOS sometimes ignores the first request to come forward; ask again for a couple of seconds.
+    private func ensureInFront() {
+        Task {
+            for attempt in 1...8 {
+                try? await Task.sleep(for: .milliseconds(250))
+                if NSApp.isActive { return }
+                if attempt % 2 == 0 { bringToFront() }
+            }
+            Log.launcher.notice("Couldn't become the active app after HOME")
+        }
     }
 
     /// If macOS still opens its Games app for the HOME press, hide it again and come back.

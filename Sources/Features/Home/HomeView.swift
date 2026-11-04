@@ -52,36 +52,37 @@ struct HomeView: View {
     private var softwareRow: some View {
         let items = home.items
         let focused = home.row == .software
-        return ScrollView(.horizontal) {
-            HStack(alignment: .bottom, spacing: ui(tileSpacing)) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    tileColumn(item, index: index, count: items.count, isSelected: focused && index == home.softwareIndex)
+        return ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
+                HStack(alignment: .bottom, spacing: ui(tileSpacing)) {
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
+                        tileColumn(item, index: index, count: items.count, isSelected: focused && index == home.softwareIndex)
+                            .scrollAnchor(index, horizontal: ui(Self.scrollMargin))
+                    }
                 }
+                .padding(.horizontal, ui(Self.edgeInset))
+                .padding(.vertical, ui(18))
             }
-            .padding(.horizontal, ui(Self.edgeInset))
-            .padding(.vertical, ui(18))
-        }
-        .scrollIndicators(.never)
-        .scrollPosition($rowPosition)
-        .onScrollGeometryChange(for: RowGeometry.self) { geo in
-            RowGeometry(offset: geo.contentOffset.x, viewport: geo.containerSize.width, content: geo.contentSize.width)
-        } action: { _, new in
-            rowGeometry = new
-        }
-        .onChange(of: home.softwareIndex) { _, index in reveal(index) }
-        // Coming back to the HOME Menu (from a page, a game, a resize or another app) keeps the
-        // selected tile in a predictable place instead of wherever the row was left.
-        .onAppear { recentre(animated: false) }
-        .onChange(of: app.stack.isEmpty) { _, isEmpty in
-            if isEmpty { recentre(animated: false) }
-        }
-        .onChange(of: items.map(\.id)) { _, _ in recentre() }
-        .onChange(of: ui.factor) { _, _ in recentre(animated: false) }
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            // A controller press can make the launcher active; moving the row then would undo
-            // the move the press just made.
-            guard Date().timeIntervalSince(app.lastInput) > 1 else { return }
-            recentre(animated: false)
+            .scrollIndicators(.never)
+            .onChange(of: home.softwareIndex) { _, index in
+                // The anchor reaches `scrollMargin` past the tile, so the smallest scroll that
+                // shows it keeps that much room to the edge (and the row's padding at the ends).
+                rowFollower.scroll(proxy, to: index, duration: 0.2)
+            }
+            // Coming back to the HOME Menu (from a page, a game, a resize or another app) keeps the
+            // selected tile in a predictable place instead of wherever the row was left.
+            .onAppear { recentre(proxy, animated: false) }
+            .onChange(of: app.stack.isEmpty) { _, isEmpty in
+                if isEmpty { recentre(proxy, animated: false) }
+            }
+            .onChange(of: items.map(\.id)) { _, _ in recentre(proxy) }
+            .onChange(of: ui.factor) { _, _ in recentre(proxy, animated: false) }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                // A controller press can make the launcher active; moving the row then would undo
+                // the move the press just made.
+                guard Date().timeIntervalSince(app.lastInput) > 1 else { return }
+                recentre(proxy, animated: false)
+            }
         }
         .overlay {
             if app.library.games.isEmpty {
@@ -95,56 +96,23 @@ struct HomeView: View {
     /// While moving, the selected tile stays this far from the edges so the next one peeks in.
     private static let scrollMargin: CGFloat = 130
 
-    private struct RowGeometry: Equatable {
-        var offset: CGFloat = 0
-        var viewport: CGFloat = 0
-        var content: CGFloat = 0
-    }
+    @State private var rowFollower = ScrollFollower()
 
-    @State private var rowPosition = ScrollPosition(edge: .leading)
-    @State private var rowGeometry = RowGeometry()
-
-    private func tileFrame(_ index: Int) -> ClosedRange<CGFloat> {
-        let x = ui(Self.edgeInset) + CGFloat(index) * ui(tileSize + tileSpacing)
-        return x...(x + ui(tileSize))
-    }
-
-    private func clampedOffset(_ x: CGFloat) -> CGFloat {
-        min(max(0, x), max(0, rowGeometry.content - rowGeometry.viewport))
-    }
-
-    private func scroll(to x: CGFloat, animated: Bool) {
-        let target = clampedOffset(x)
-        guard abs(target - rowGeometry.offset) > 0.5 else { return }
-        if animated {
-            withAnimation(.easeOut(duration: 0.2)) { rowPosition.scrollTo(x: target) }
-        } else {
-            rowPosition.scrollTo(x: target)
-        }
-    }
-
-    /// Scrolls only when the selected tile would get closer than `scrollMargin` to an edge.
-    private func reveal(_ index: Int) {
-        guard rowGeometry.viewport > 0 else { return }
-        let frame = tileFrame(index)
-        let margin = ui(Self.scrollMargin)
-        let visible = rowGeometry.offset...(rowGeometry.offset + rowGeometry.viewport)
-        if frame.lowerBound - margin < visible.lowerBound {
-            scroll(to: frame.lowerBound - margin, animated: true)
-        } else if frame.upperBound + margin > visible.upperBound {
-            scroll(to: frame.upperBound + margin - rowGeometry.viewport, animated: true)
-        }
-    }
-
-    private func recentre(animated: Bool = true) {
+    private func recentre(_ proxy: ScrollViewProxy, animated: Bool = true) {
         let index = home.softwareIndex
+        rowFollower.cancel()
         DispatchQueue.main.async {
-            guard rowGeometry.viewport > 0 else { return }
-            if index <= 2 {
-                scroll(to: 0, animated: animated)
+            let move = {
+                if index <= 2 {
+                    proxy.scrollTo(0, anchor: .leading)
+                } else {
+                    proxy.scrollTo(index, anchor: .center)
+                }
+            }
+            if animated {
+                withAnimation(.easeOut(duration: 0.2), move)
             } else {
-                let frame = tileFrame(index)
-                scroll(to: (frame.lowerBound + frame.upperBound - rowGeometry.viewport) / 2, animated: animated)
+                move()
             }
         }
     }

@@ -87,8 +87,31 @@ public final class GameLauncher {
     /// Brings the running game to the front.
     @discardableResult
     public func resume() -> Bool {
-        guard let app = gameWindowApp else { return false }
-        return focus(app)
+        guard let app = gameWindowApp else {
+            Log.launcher.notice("Resume: the game's window process wasn't found")
+            return false
+        }
+        let done = focus(app)
+        Log.launcher.notice("Resume: handed focus to pid \(app.processIdentifier) (\(done ? "accepted" : "refused", privacy: .public))")
+        return done
+    }
+
+    /// Whether the running game's window has focus.
+    public var isGameInFront: Bool {
+        guard let current = session, let front = NSWorkspace.shared.frontmostApplication?.processIdentifier else { return false }
+        return front == current.windowPID || front == current.pid
+    }
+
+    /// Hides the game so the launcher can come forward. macOS may refuse to activate a background
+    /// app over a full-screen game, but an app can always hide another; `resume()` shows it again.
+    public func hideGame() {
+        guard let current = session else { return }
+        let window = gameWindowApp
+        window?.hide()
+        if let main = NSRunningApplication(processIdentifier: current.pid), main.processIdentifier != window?.processIdentifier {
+            main.hide()
+        }
+        Log.launcher.notice("Hid the game to come back to the launcher")
     }
 
     /// Asks the running game to quit and waits for it (force-quits after `timeout`).
