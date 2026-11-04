@@ -22,7 +22,8 @@ deploys Versity S3 Gateway (`deploy/k8s/store.yaml`) to Kubernetes. It serves th
 bucket `switch-games` on LAN port `30900`, with a read-only `launcher` login. It mounts the folder
 read-only over NFS and is kept off k8s-worker3 (see the network adapter notes below), so downloads
 never touch that node. It also sets up a dedicated Cloudflare tunnel (`deploy/k8s/tunnel.yaml`) for
-`https://games.parseit.net`, served by two `cloudflared` connectors on different nodes. The
+`https://games.parseit.net`, served by two `cloudflared` connectors kept off k8s-worker3 (a
+connector there made Cloudflare answer 503 mid-download whenever the node's adapter reset). The
 generated login is kept in `~/.config/switch-store/store.env`.
 
 Earlier versions ran MinIO, then SeaweedFS, which kept the games in its own volume format on an NFS
@@ -90,9 +91,16 @@ address, optionally the remote address, and the `launcher` username and password
 saved in the launcher's settings file (`~/Library/Application Support/SwitchLauncher/settings.json`,
 readable only by your user).
 
-Downloads resume after network drops, are checked against the catalog's SHA-256, extracted with
-`aa extract` and moved into the install folder (System Settings › Store › Install Downloads To). An
-older copy of the app goes to the Trash.
+Downloads are written to `<install folder>/.switch-store/<id>.aar.partial`. When the connection
+drops or the store answers with an error (503 from the tunnel, timeouts, no network), the launcher
+shows "Reconnecting…" and continues from the last byte with a Range request, waiting 2, 4, 8… up to
+30 seconds between tries and giving up only after 10 minutes without receiving anything. Every
+third try it looks for the store again, so a download started at home carries on through the
+remote address. The partial file is kept after a failure or quitting the launcher, and starting
+the download again continues it (a new version of the game starts afresh; Stop throws it away).
+Finished downloads are checked against the catalog's SHA-256, extracted with `aa extract` and moved
+into the install folder (System Settings › Internet › Install Downloads To). An older copy of the
+app goes to the Trash.
 
 ## Testing without a server
 

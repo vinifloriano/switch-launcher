@@ -422,7 +422,8 @@ struct StoreTile: View {
 
     private func fraction(_ phase: StoreService.Phase) -> CGFloat {
         switch phase {
-        case .downloading(let received, let total): total > 0 ? CGFloat(Double(received) / Double(total)) : 0
+        case .downloading(let received, let total), .reconnecting(let received, let total):
+            total > 0 ? CGFloat(Double(received) / Double(total)) : 0
         case .verifying, .installing, .installed: 1
         case .failed: 0
         }
@@ -432,6 +433,8 @@ struct StoreTile: View {
         switch phase {
         case .downloading(let received, let total):
             total > 0 ? "\(Int(Double(received) / Double(total) * 100))% · \(ByteFormatter.string(received))" : "Downloading…"
+        case .reconnecting(let received, let total):
+            total > 0 ? "Reconnecting… \(Int(Double(received) / Double(total) * 100))% saved" : "Reconnecting…"
         case .verifying: "Checking…"
         case .installing: "Installing…"
         case .installed: "Installed"

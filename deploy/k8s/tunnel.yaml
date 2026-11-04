@@ -38,6 +38,15 @@ spec:
     metadata:
       labels: { app: cloudflared }
     spec:
+      # k8s-worker3's USB network adapter resets now and then; a connector there drops the
+      # downloads routed through it (Cloudflare answers 503 until it reconnects).
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - { key: kubernetes.io/hostname, operator: NotIn, values: [k8s-worker3] }
       topologySpreadConstraints:
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname

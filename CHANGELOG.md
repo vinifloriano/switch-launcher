@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0 — 2026-11-04
+
+- **Game Store downloads continue where they stopped.** A dropped connection or an error from the
+  store (such as the 503 a tunnel returns near the end of a big download) no longer fails the
+  download: it shows "Reconnecting…" and carries on from the last byte, retrying for up to 10
+  minutes without progress. Quitting the launcher or a failed download keeps what was downloaded,
+  and starting it again continues from there.
+- Store server: the Cloudflare tunnel connectors stay off k8s-worker3, whose network adapter resets.
+
 ## 1.5.0 — 2026-10-29
 
 - **Switch 2 look**: the HOME Menu shortcuts sit together on one rounded bar.
