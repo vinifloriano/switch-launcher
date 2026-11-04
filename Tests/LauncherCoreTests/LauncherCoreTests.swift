@@ -87,6 +87,42 @@ final class LibraryOrderingTests: XCTestCase {
     }
 }
 
+final class PersistenceTests: XCTestCase {
+    private var folder: URL!
+
+    override func setUpWithError() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    @MainActor
+    func testSettingsArePersistedWithPrivatePermissions() throws {
+        let file = folder.appendingPathComponent("nested/settings.json")
+        let settings = SettingsStore(fileURL: file)
+        settings.value.userName = "Player Two"
+
+        XCTAssertEqual(SettingsStore(fileURL: file).value.userName, "Player Two")
+        let attributes = try FileManager.default.attributesOfItem(atPath: file.path)
+        XCTAssertEqual((attributes[.posixPermissions] as? NSNumber)?.intValue, 0o600)
+    }
+
+    @MainActor
+    func testCorruptSettingsArePreservedBeforeDefaultsAreUsed() throws {
+        let file = folder.appendingPathComponent("settings.json")
+        let damaged = Data("{not-json".utf8)
+        try damaged.write(to: file)
+
+        let settings = SettingsStore(fileURL: file)
+
+        XCTAssertEqual(settings.value, LauncherSettings())
+        XCTAssertEqual(try Data(contentsOf: JSONFileStore.corruptBackupURL(for: file)), damaged)
+    }
+}
+
 final class S3SignerTests: XCTestCase {
     /// AWS's published example for query-string (presigned) authentication.
     func testMatchesAWSPresignExample() throws {

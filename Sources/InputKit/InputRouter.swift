@@ -78,9 +78,8 @@ public final class InputRouter {
     public func start() {
         guard keyMonitor == nil else { return }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            MainActor.assumeIsolated {
-                (self?.handleKey(event) ?? false) ? nil : event
-            }
+            let handled = MainActor.assumeIsolated { self?.handleKey(event) ?? false }
+            return handled ? nil : event
         }
 
         GCController.shouldMonitorBackgroundEvents = true

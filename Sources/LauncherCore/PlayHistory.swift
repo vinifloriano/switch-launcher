@@ -27,14 +27,8 @@ public final class PlayHistory {
     public init(fileURL: URL = AppPaths.supportDirectory.appendingPathComponent("play-history.json")) {
         self.fileURL = fileURL
         self.daysURL = fileURL.deletingLastPathComponent().appendingPathComponent("play-days.json")
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode([String: PlayRecord].self, from: data) {
-            records = decoded
-        }
-        if let data = try? Data(contentsOf: daysURL),
-           let decoded = try? JSONDecoder().decode([String: TimeInterval].self, from: data) {
-            days = decoded
-        }
+        records = JSONFileStore.load([String: PlayRecord].self, from: fileURL, label: "play history") ?? [:]
+        days = JSONFileStore.load([String: TimeInterval].self, from: daysURL, label: "daily play history") ?? [:]
     }
 
     public static func dayKey(_ date: Date) -> String {
@@ -71,14 +65,19 @@ public final class PlayHistory {
         // A session over midnight counts toward the day it ended; close enough for a daily limit.
         days[Self.dayKey(date), default: 0] += seconds
         save()
-        if let data = try? JSONEncoder().encode(days) { try? data.write(to: daysURL, options: .atomic) }
+        do {
+            try JSONFileStore.save(days, to: daysURL, permissions: 0o600)
+        } catch {
+            Log.persistence.error("Couldn't save daily play history: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private func save() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(records) else { return }
-        try? data.write(to: fileURL, options: .atomic)
+        do {
+            try JSONFileStore.save(records, to: fileURL, permissions: 0o600)
+        } catch {
+            Log.persistence.error("Couldn't save play history: \(error.localizedDescription, privacy: .public)")
+        }
     }
 }
 

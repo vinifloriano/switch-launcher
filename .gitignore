@@ -3,5 +3,6 @@
 .swiftpm/
 build/
 dist/
+/Demo.mov
 *.xcuserstate
 xcuserdata/

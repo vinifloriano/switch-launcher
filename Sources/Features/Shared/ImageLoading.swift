@@ -1,4 +1,5 @@
 import AppKit
+import DesignSystem
 import ImageIO
 import LauncherCore
 import Observation

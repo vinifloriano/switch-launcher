@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.9.0 — 2026-11-04
+
+- **Product demo:** added a Git-friendly, two-minute 720p H.264 demo with a clickable preview in
+  the README.
+- **Reliable local data:** settings and play history are written atomically with private file
+  permissions. Damaged JSON is preserved for diagnosis, the launcher falls back safely, and read
+  or write failures are recorded in unified logging.
+- **Safer downloads:** failed file positioning no longer allows a store response to continue into
+  a potentially invalid partial download.
+- **Production builds:** removed current Swift concurrency warnings; release builds now validate
+  semantic versions, release tags, Info.plist, signatures and ZIP integrity.
+- **Safer CI releases:** signing credentials are only exposed to tagged GitHub builds, while release
+  publishing runs separately with narrowly scoped write permission.
+
 ## 1.8.0 — 2026-11-04
 
 - **Controller scrolling & margins:** Fixed issues where rapid stick/d-pad navigation caused tiles

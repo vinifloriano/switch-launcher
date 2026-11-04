@@ -430,8 +430,13 @@ private final class DownloadDelegate: NSObject, URLSessionDataDelegate, @uncheck
             }
             guard let start, start <= transfer.offset,
                   let handle = try? FileHandle(forWritingTo: Self.ensureFile(transfer.file)) else { return }
-            try? handle.truncate(atOffset: UInt64(start))
-            try? handle.seekToEnd()
+            do {
+                try handle.truncate(atOffset: UInt64(start))
+                try handle.seekToEnd()
+            } catch {
+                try? handle.close()
+                return
+            }
             transfer.offset = start
             transfer.handle = handle
             allow = true

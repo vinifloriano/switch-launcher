@@ -21,6 +21,14 @@ for arg in "$@"; do
 done
 
 VERSION="$(tr -d '[:space:]' < VERSION)"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+    echo "VERSION must be a semantic version (found: $VERSION)" >&2
+    exit 2
+fi
+if [[ "${GITHUB_REF:-}" == refs/tags/v* && "${GITHUB_REF#refs/tags/v}" != "$VERSION" ]]; then
+    echo "release tag ${GITHUB_REF#refs/tags/} does not match VERSION $VERSION" >&2
+    exit 2
+fi
 BUILD_NUMBER="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
 
@@ -35,6 +43,7 @@ cp Resources/Info.plist "$APP/Contents/"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :SLGitCommit string $COMMIT" "$APP/Contents/Info.plist"
+plutil -lint "$APP/Contents/Info.plist" >/dev/null
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -55,7 +64,7 @@ else
     # answers (e.g. access to Documents) are kept across rebuilds instead of being asked again.
     codesign --force --sign - --requirements '=designated => identifier "dev.vinicius.switchlauncher"' "$APP"
 fi
-codesign --verify --strict "$APP"
+codesign --verify --deep --strict --verbose=2 "$APP"
 echo "Built $APP ($VERSION build $BUILD_NUMBER, $COMMIT, signed by ${SIGN_IDENTITY:-ad-hoc})"
 
 package() {
@@ -67,12 +76,14 @@ if [[ $DIST == 1 ]]; then
     mkdir -p dist
     ZIP="dist/Switch-Launcher-$VERSION.zip"
     package
+    unzip -tq "$ZIP" >/dev/null
     if [[ -n "${NOTARY_PROFILE:-}" ]]; then
         [[ -n "${SIGN_IDENTITY:-}" ]] || { echo "NOTARY_PROFILE needs SIGN_IDENTITY" >&2; exit 2; }
         echo "Notarizing (this usually takes a few minutes)…"
         xcrun notarytool submit "$ZIP" --keychain-profile "$NOTARY_PROFILE" --wait
         xcrun stapler staple "$APP"
         package   # re-zip so the download carries the stapled ticket
+        unzip -tq "$ZIP" >/dev/null
         spctl --assess --type execute --verbose "$APP"
     fi
     (cd dist && shasum -a 256 "$(basename "$ZIP")" > "$(basename "$ZIP").sha256")

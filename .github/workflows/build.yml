@@ -7,13 +7,19 @@ on:
   pull_request:
 
 permissions:
-  contents: write   # publishing releases for v* tags
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 jobs:
   build:
     runs-on: macos-15
+    timeout-minutes: 45
     env:
-      HAS_CERT: ${{ secrets.MACOS_CERT_P12 != '' }}
+      # Signing credentials are only exposed to immutable release-tag runs.
+      HAS_CERT: ${{ startsWith(github.ref, 'refs/tags/v') && secrets.MACOS_CERT_P12 != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -52,8 +58,20 @@ jobs:
         with:
           name: switch-launcher
           path: dist/*
-      - name: Publish release (tags only)
-        if: startsWith(github.ref, 'refs/tags/v')
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: switch-launcher
+          path: dist
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*

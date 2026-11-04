@@ -137,12 +137,8 @@ public final class SettingsStore {
 
     public init(fileURL: URL = AppPaths.supportDirectory.appendingPathComponent("settings.json")) {
         self.fileURL = fileURL
-        if let data = try? Data(contentsOf: fileURL),
-           let decoded = try? JSONDecoder().decode(LauncherSettings.self, from: data) {
-            value = decoded
-        } else {
-            value = LauncherSettings()
-        }
+        value = JSONFileStore.load(LauncherSettings.self, from: fileURL, label: "settings")
+            ?? LauncherSettings()
     }
 
     public var libraryFolderURLs: [URL] {
@@ -154,12 +150,12 @@ public final class SettingsStore {
     }
 
     private func save() {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(value) else { return }
-        try? data.write(to: fileURL, options: .atomic)
-        // Holds the store password: readable by this user only.
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+        do {
+            // Holds the store password: readable by this user only.
+            try JSONFileStore.save(value, to: fileURL, permissions: 0o600)
+        } catch {
+            Log.persistence.error("Couldn't save settings: \(error.localizedDescription, privacy: .public)")
+        }
     }
 
 }

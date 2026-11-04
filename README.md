@@ -10,6 +10,12 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 > Not affiliated with or endorsed by Nintendo. Switch Launcher contains no game code, keys or
 > artwork; it only launches apps you have already built from your own dumps.
 
+## Demo
+
+[![Switch Launcher demo — click to play](docs/screenshots/demo.png)](Demo.mp4)
+
+[Watch the two-minute demo in 720p](Demo.mp4) (H.264/AAC, about 68 MB).
+
 | System Settings | Controllers | Test Input Devices |
 |---|---|---|
 | ![System Settings](docs/screenshots/settings.png) | ![Controllers](docs/screenshots/controllers.png) | ![Test Input Devices](docs/screenshots/tester.png) |
