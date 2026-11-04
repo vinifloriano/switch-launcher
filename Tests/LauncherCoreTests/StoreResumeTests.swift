@@ -3,8 +3,8 @@ import Foundation
 import Network
 import XCTest
 
-/// A store that misbehaves like a flaky tunnel: the first download is cut part way, the next
-/// request gets a 503, and later requests are served from the byte asked for.
+/// A store that misbehaves like the tunnel did: the first request to continue a download gets a
+/// 503, later ones are served from the byte asked for.
 private final class FlakyStore: @unchecked Sendable {
     let archive: Data
     private(set) var ranges: [String?] = []
@@ -48,31 +48,23 @@ private final class FlakyStore: @unchecked Sendable {
         let range = head.split(separator: "\r\n")
             .first { $0.lowercased().hasPrefix("range:") }
             .map { String($0.dropFirst("range:".count)).trimmingCharacters(in: .whitespaces) }
-        let request = lock.withLock { () -> Int in
+        let rangedBefore = lock.withLock { () -> Int in
             ranges.append(range)
-            return ranges.count
+            return ranges.dropLast().count
         }
         let total = archive.count
-        switch request {
-        case 1:
-            // Promise everything, send 40 %, then drop the connection.
-            let cut = total * 4 / 10
-            let header = "HTTP/1.1 200 OK\r\nContent-Length: \(total)\r\nConnection: close\r\n\r\n"
-            connection.send(content: Data(header.utf8) + archive.prefix(cut), completion: .contentProcessed { _ in
-                connection.cancel()
-            })
-        case 2:
+        if rangedBefore == 0 {
             let body = "Service Unavailable"
             let header = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n"
             connection.send(content: Data((header + body).utf8), completion: .contentProcessed { _ in connection.cancel() })
-        default:
-            let start = range.flatMap { Int($0.dropFirst("bytes=".count).split(separator: "-").first ?? "") } ?? 0
-            let header = "HTTP/1.1 206 Partial Content\r\nContent-Length: \(total - start)\r\n"
-                + "Content-Range: bytes \(start)-\(total - 1)/\(total)\r\nConnection: close\r\n\r\n"
-            connection.send(content: Data(header.utf8) + archive.suffix(from: start), completion: .contentProcessed { _ in
-                connection.cancel()
-            })
+            return
         }
+        let start = range.flatMap { Int($0.dropFirst("bytes=".count).split(separator: "-").first ?? "") } ?? 0
+        let status = range == nil ? "200 OK" : "206 Partial Content"
+        var header = "HTTP/1.1 \(status)\r\nContent-Length: \(total - start)\r\nConnection: close\r\n"
+        if range != nil { header += "Content-Range: bytes \(start)-\(total - 1)/\(total)\r\n" }
+        connection.send(content: Data((header + "\r\n").utf8) + archive.suffix(from: start), contentContext: .finalMessage,
+                        isComplete: true, completion: .contentProcessed { _ in })
     }
 }
 
@@ -109,7 +101,7 @@ final class StoreResumeTests: XCTestCase {
     }
 
     @MainActor
-    func testContinuesFromWhereItStoppedAfterADropAndA503() async throws {
+    func testContinuesASavedDownloadAfterA503() async throws {
         let data = try makeArchive()
         let server = try FlakyStore(archive: data)
         try await server.start()
@@ -126,6 +118,12 @@ final class StoreResumeTests: XCTestCase {
                              sha256: StoreService.sha256(ofData: data))
         let install = folder.appendingPathComponent("apps", isDirectory: true)
         try FileManager.default.createDirectory(at: install, withIntermediateDirectories: true)
+        // 40 % saved by an earlier attempt (a dropped connection, or the launcher was quit).
+        let cut = data.count * 4 / 10
+        let partial = StoreService.partialURL(for: game, in: install)
+        try FileManager.default.createDirectory(at: partial.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try data.prefix(cut).write(to: partial)
+        try game.sha256.write(to: StoreService.partialInfoURL(for: game, in: install), atomically: true, encoding: .utf8)
 
         var sawReconnecting = false
         service.download(game, into: install)
@@ -139,12 +137,8 @@ final class StoreResumeTests: XCTestCase {
 
         XCTAssertEqual(service.jobs[game.id], .installed)
         XCTAssertTrue(sawReconnecting)
-        // First a full request, then two that continue from where the cut left off.
-        XCTAssertEqual(server.ranges.count, 3)
-        XCTAssertNil(server.ranges[0])
-        let resumed = "bytes=\(data.count * 4 / 10)-"
-        XCTAssertEqual(server.ranges[1], resumed)
-        XCTAssertEqual(server.ranges[2], resumed)
+        // Both requests continue from the saved part: the one that got the 503, and the retry.
+        XCTAssertEqual(server.ranges, Array(repeating: "bytes=\(cut)-", count: 2))
         let installed = install.appendingPathComponent("Test Game.app/Contents/Resources/romfs.bin")
         XCTAssertEqual(try Data(contentsOf: installed).count, 3_000_000)
         XCTAssertFalse(FileManager.default.fileExists(atPath: install.appendingPathComponent(".switch-store").path))

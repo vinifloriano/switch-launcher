@@ -18,7 +18,20 @@ public struct MacUser: Identifiable, Hashable, @unchecked Sendable {
 
 /// Reads the Mac's user accounts from Open Directory (the same list as System Settings › Users & Groups).
 public enum MacUsers {
+    nonisolated(unsafe) private static var cache: (users: [MacUser], read: Date)?
+    private static let lock = NSLock()
+
+    /// The accounts, read from Open Directory at most once a minute (a query takes a few ms).
     public static func all() -> [MacUser] {
+        lock.withLock {
+            if let cache, Date().timeIntervalSince(cache.read) < 60 { return cache.users }
+            let users = read()
+            cache = (users, Date())
+            return users
+        }
+    }
+
+    private static func read() -> [MacUser] {
         guard let node = try? ODNode(session: ODSession.default(), type: ODNodeType(kODNodeTypeLocalNodes)),
               let query = try? ODQuery(
                 node: node, forRecordTypes: kODRecordTypeUsers, attribute: nil,

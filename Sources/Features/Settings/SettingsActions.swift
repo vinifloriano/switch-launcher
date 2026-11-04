@@ -84,6 +84,45 @@ extension AppModel {
         }
     }
 
+    // MARK: Power
+
+    /// The power button: lock the Mac, put it to sleep, or close the launcher.
+    func openPowerOptions() {
+        sound.play(.select)
+        dialog = DialogModel(
+            app: self,
+            message: "Power Options",
+            detail: launcher.session == nil ? nil : "The software keeps running.",
+            buttons: ["Cancel", "Lock Mac", "Sleep", "Close App"],
+            destructiveIndex: nil
+        ) { [unowned self] index in
+            switch index {
+            case 1: lockMac()
+            case 2: runPowerCommand("sleepnow")
+            case 3: NSApp.terminate(nil)
+            default: break
+            }
+        }
+    }
+
+    /// The launcher's own Sleep Mode screen (also used by Auto-Sleep).
+    func enterSleepMode() {
+        replaceStack(stack + [.sleep(SleepModel(app: self))])
+        sound.play(.back)
+    }
+
+    /// Locks the screen the way the menu bar's Lock Screen does.
+    func lockMac() {
+        typealias Lock = @convention(c) () -> Void
+        if let handle = dlopen("/System/Library/PrivateFrameworks/login.framework/Versions/Current/login", RTLD_LAZY),
+           let symbol = dlsym(handle, "SACLockScreenImmediate") {
+            unsafeBitCast(symbol, to: Lock.self)()
+        } else {
+            // Falls back to sleeping the display, which locks when a password is required right away.
+            runPowerCommand("displaysleepnow")
+        }
+    }
+
     // MARK: Sleep
 
     func runPowerCommand(_ argument: String) {
@@ -165,19 +204,25 @@ extension AppModel {
 
     // MARK: Profile icon
 
-    /// The profile icon as an image, for menu rows.
+    /// The profile icon as an image, for menu rows. Drawn once per icon and colour: rows are
+    /// rebuilt on every press, and a new image each time makes SwiftUI redraw them.
     func avatarImage(diameter: CGFloat = 44) -> NSImage? {
+        let key = "avatar:\(settings.value.avatarSymbol):\(settings.value.avatarColorIndex):\(diameter)"
+        if let image = RowImageCache.images[key] { return image }
         let renderer = ImageRenderer(content: UserAvatar(
             symbol: settings.value.avatarSymbol,
             color: AvatarPalette.color(at: settings.value.avatarColorIndex),
             diameter: diameter
         ).padding(2))
         renderer.scale = 2
+        RowImageCache.images[key] = renderer.nsImage
         return renderer.nsImage
     }
 
     /// Initials on a coloured circle, for Mac accounts without a picture.
     func initialsImage(_ name: String, diameter: CGFloat = 44) -> NSImage? {
+        let key = "initials:\(name):\(diameter)"
+        if let image = RowImageCache.images[key] { return image }
         let initials = name.split(separator: " ").prefix(2).compactMap(\.first).map(String.init).joined()
         let renderer = ImageRenderer(content: ZStack {
             Circle().fill(LinearGradient(colors: [Color(hex: 0x8E8E93), Color(hex: 0x636366)],
@@ -187,6 +232,13 @@ extension AppModel {
                 .foregroundStyle(.white)
         }.frame(width: diameter, height: diameter))
         renderer.scale = 2
+        RowImageCache.images[key] = renderer.nsImage
         return renderer.nsImage
     }
+}
+
+/// Images drawn for menu rows, by what they show.
+@MainActor
+enum RowImageCache {
+    static var images: [String: NSImage] = [:]
 }

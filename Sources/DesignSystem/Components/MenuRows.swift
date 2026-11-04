@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Left-hand category entry in two-pane pages (System Settings, software options...).
-public struct SidebarRow: View {
+public struct SidebarRow: View, Equatable {
     let title: String
     let symbol: String?
     let isCurrent: Bool
@@ -16,6 +16,10 @@ public struct SidebarRow: View {
         self.symbol = symbol
         self.isCurrent = isCurrent
         self.isFocused = isFocused
+    }
+
+    public static func == (a: SidebarRow, b: SidebarRow) -> Bool {
+        a.title == b.title && a.symbol == b.symbol && a.isCurrent == b.isCurrent && a.isFocused == b.isFocused
     }
 
     public var body: some View {
@@ -45,7 +49,7 @@ public struct SidebarRow: View {
     }
 }
 
-public enum ItemAccessory {
+public enum ItemAccessory: Equatable {
     case none
     case text(String)
     case toggle(Bool)
@@ -56,7 +60,7 @@ public enum ItemAccessory {
 }
 
 /// One coloured part of a `Meter`.
-public struct MeterSegment: Identifiable, Sendable {
+public struct MeterSegment: Identifiable, Equatable, Sendable {
     public let id: String
     public let label: String
     public let detail: String
@@ -74,7 +78,7 @@ public struct MeterSegment: Identifiable, Sendable {
 }
 
 /// A bar split into coloured parts with a legend below, e.g. how a disk is used.
-public struct Meter: Sendable {
+public struct Meter: Equatable, Sendable {
     public let segments: [MeterSegment]
 
     public init(segments: [MeterSegment]) {
@@ -156,7 +160,7 @@ struct LevelSlider: View {
 }
 
 /// A row in the right-hand pane: optional icon, title + subtitle, accessory value.
-public struct ItemRow: View {
+public struct ItemRow: View, Equatable {
     let title: String
     let subtitle: String?
     let image: NSImage?
@@ -190,6 +194,14 @@ public struct ItemRow: View {
         self.isDestructive = isDestructive
         self.meter = meter
         self.onSlide = onSlide
+    }
+
+    /// Rows are compared so a press only redraws the rows that changed (the old and new
+    /// selection), not every row on the page. Images are compared by identity.
+    public static func == (a: ItemRow, b: ItemRow) -> Bool {
+        a.title == b.title && a.subtitle == b.subtitle && a.image === b.image && a.symbol == b.symbol
+            && a.accessory == b.accessory && a.isFocused == b.isFocused && a.isDestructive == b.isDestructive
+            && a.meter == b.meter
     }
 
     public var body: some View {

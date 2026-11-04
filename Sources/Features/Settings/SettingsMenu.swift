@@ -107,7 +107,7 @@ extension AppModel {
             items: [
                 MenuItem(id: "theme", title: "Theme", kind: .choice(
                     choices.map(\.displayName),
-                    choices.firstIndex(of: settings.value.theme) ?? 0,
+                    choices.firstIndex(of: self.settings.value.theme) ?? 0,
                     { [unowned self] in settings.value.theme = choices[$0] }
                 )),
             ]
@@ -181,7 +181,7 @@ extension AppModel {
                          symbol: "gamecontroller.fill", kind: .link { [unowned self] in openControllerTest() }),
                 MenuItem(id: "grip", title: "Change Grip/Order", subtitle: "Assign player numbers with L + R.",
                          symbol: "arrow.left.arrow.right", kind: .link { [unowned self] in openGripOrder() }),
-                toggle("layout", "Nintendo Button Layout", \.nintendoButtonLayout,
+                self.toggle("layout", "Nintendo Button Layout", \.nintendoButtonLayout,
                        subtitle: "Use A/B/X/Y as printed on Nintendo controllers."),
                 .header("Keyboard"),
             ] + keys.map { MenuItem(id: "key:" + $0.0, title: $0.0, kind: .info($0.1)) }
@@ -200,12 +200,12 @@ extension AppModel {
             id: "system", title: "System", symbol: "info.circle.fill",
             items: [
                 MenuItem(id: "version", title: "Launcher Version", kind: .info(version)),
-                MenuItem(id: "update", title: "Software Update", subtitle: updateStatus,
-                         symbol: updates.availableRelease == nil ? "arrow.clockwise.circle.fill" : "arrow.down.circle.fill",
+                MenuItem(id: "update", title: "Software Update", subtitle: self.updateStatus,
+                         symbol: self.updates.availableRelease == nil ? "arrow.clockwise.circle.fill" : "arrow.down.circle.fill",
                          kind: .action { [unowned self] in openSoftwareUpdate() }),
-                toggle("autoUpdate", "Check for Updates Automatically", \.checkForUpdates,
+                self.toggle("autoUpdate", "Check for Updates Automatically", \.checkForUpdates,
                        subtitle: "Looks for a new release on GitHub at startup and every 6 hours."),
-                MenuItem(id: "software", title: "Installed Software", kind: .info("\(library.games.count)")),
+                MenuItem(id: "software", title: "Installed Software", kind: .info("\(self.library.games.count)")),
                 MenuItem(id: "data", title: "Data Folder", subtitle: AppPaths.supportDirectory.path, symbol: "folder",
                          kind: .action { NSWorkspace.shared.open(AppPaths.supportDirectory) }),
                 MenuItem(id: "fs", title: "Toggle Full Screen", symbol: "arrow.up.left.and.arrow.down.right",

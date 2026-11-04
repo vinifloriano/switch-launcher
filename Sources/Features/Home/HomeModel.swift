@@ -41,7 +41,7 @@ public enum DockItem: String, CaseIterable, Identifiable {
         case .controllers: "Controllers"
         case .virtualGameCard: "Virtual Game Cards"
         case .settings: "System Settings"
-        case .sleep: "Sleep Mode"
+        case .sleep: "Power"
         }
     }
 
@@ -258,8 +258,7 @@ extension AppModel {
         case .settings:
             push(.menu(makeSettingsMenu()))
         case .sleep:
-            replaceStack(stack + [.sleep(SleepModel(app: self))])
-            sound.play(.back)
+            openPowerOptions()
         }
     }
 

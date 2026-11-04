@@ -71,14 +71,19 @@ public struct MenuSection: Identifiable {
     public let title: String
     public var symbol: String?
     public var footnote: String?
-    public var items: [MenuItem]
+    /// Built when read, so a page only builds the rows of the section on screen, not every
+    /// section's (some read disks and user accounts).
+    private let makeItems: () -> [MenuItem]
 
-    public init(id: String, title: String, symbol: String? = nil, footnote: String? = nil, items: [MenuItem]) {
+    public var items: [MenuItem] { makeItems() }
+
+    public init(id: String, title: String, symbol: String? = nil, footnote: String? = nil,
+                items: @escaping @autoclosure () -> [MenuItem]) {
         self.id = id
         self.title = title
         self.symbol = symbol
         self.footnote = footnote
-        self.items = items
+        self.makeItems = items
     }
 }
 

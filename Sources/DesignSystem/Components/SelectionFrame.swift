@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 /// The cyan focus border drawn around whatever the cursor is on.
@@ -31,7 +32,6 @@ private struct SelectionGlow<S: InsettableShape>: View {
     let shape: S
     let lineWidth: CGFloat
 
-    @State private var bright = false
     @Environment(\.theme) private var theme
     @Environment(\.ui) private var ui
     @Environment(\.controlActiveState) private var activeState
@@ -41,15 +41,69 @@ private struct SelectionGlow<S: InsettableShape>: View {
             shape
                 .strokeBorder(theme.accent, lineWidth: lineWidth)
                 .shadow(color: theme.accent.opacity(0.5), radius: ui(8))
-            shape
-                .strokeBorder(Color.white.opacity(0.6), lineWidth: lineWidth * 0.45)
-                .padding(lineWidth * 0.275)
-                .opacity(bright && activeState == .key ? 1 : 0)
+            PulsingStroke(shape: shape, lineWidth: lineWidth, isActive: activeState == .key)
         }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 0.75).repeatForever(autoreverses: true)) {
-                bright = true
-            }
+    }
+}
+
+/// The white inner line that fades in and out. A SwiftUI `repeatForever` animation here updated
+/// the view graph on every display frame (a third of a CPU core while idle); a Core Animation
+/// opacity animation runs in the render server and costs the app nothing between frames.
+private struct PulsingStroke<S: InsettableShape>: NSViewRepresentable {
+    let shape: S
+    let lineWidth: CGFloat
+    let isActive: Bool
+
+    func makeNSView(context: Context) -> PulseView { PulseView() }
+
+    func updateNSView(_ view: PulseView, context: Context) {
+        let shape = shape
+        let inset = lineWidth * 0.5
+        view.makePath = { rect in shape.inset(by: inset).path(in: rect).cgPath }
+        view.update(lineWidth: lineWidth * 0.45, isActive: isActive)
+    }
+}
+
+private final class PulseView: NSView {
+    var makePath: ((CGRect) -> CGPath)?
+    private let stroke = CAShapeLayer()
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        stroke.fillColor = nil
+        stroke.strokeColor = NSColor.white.withAlphaComponent(0.6).cgColor
+        stroke.opacity = 0
+        layer?.addSublayer(stroke)
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        stroke.frame = bounds
+        stroke.path = makePath?(bounds)
+        CATransaction.commit()
+    }
+
+    func update(lineWidth: CGFloat, isActive: Bool) {
+        if stroke.lineWidth != lineWidth { stroke.lineWidth = lineWidth }
+        let running = stroke.animation(forKey: "pulse") != nil
+        if isActive, !running {
+            let pulse = CABasicAnimation(keyPath: "opacity")
+            pulse.fromValue = 0
+            pulse.toValue = 1
+            pulse.duration = 0.75
+            pulse.autoreverses = true
+            pulse.repeatCount = .infinity
+            pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            stroke.add(pulse, forKey: "pulse")
+        } else if !isActive, running {
+            stroke.removeAnimation(forKey: "pulse")
         }
     }
 }

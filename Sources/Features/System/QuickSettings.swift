@@ -31,9 +31,9 @@ public final class QuickSettingsModel: InputResponder {
         let volumes = [0.35, 0.7, 1.0]
         let volumeIndex = volumes.indices.min { abs(volumes[$0] - s.soundVolume) < abs(volumes[$1] - s.soundVolume) } ?? 1
         return [
-            Item(id: "sleep", title: "Sleep Mode", symbol: "power", accessory: .none) { [unowned self] in
+            Item(id: "sleep", title: "Power", symbol: "power", accessory: .none) { [unowned self] in
                 app.quickSettings = nil
-                app.openDock(.sleep)
+                app.openPowerOptions()
             },
             Item(id: "theme", title: "Dark Theme", symbol: "moon.fill", accessory: .toggle(isDark)) { [unowned self] in
                 app.settings.value.theme = isDark ? .basicWhite : .basicBlack

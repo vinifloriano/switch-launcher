@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Square software tile with the game's cover icon.
-public struct GameTile: View {
+public struct GameTile: View, Equatable {
     let image: NSImage?
     let title: String
     let size: CGFloat
@@ -29,6 +29,11 @@ public struct GameTile: View {
         self.size = size
         self.isSelected = isSelected
         self.badgeSymbol = badgeSymbol
+    }
+
+    public static func == (a: GameTile, b: GameTile) -> Bool {
+        a.image === b.image && a.title == b.title && a.size == b.size && a.isSelected == b.isSelected
+            && a.badgeSymbol == b.badgeSymbol && a.isLoading == b.isLoading
     }
 
     /// Stable colour per title for software without cover art.

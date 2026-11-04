@@ -76,7 +76,9 @@ public final class AppModel {
     @ObservationIgnored private var started = false
     @ObservationIgnored private var updatesStarted = false
     @ObservationIgnored private var gamesAppWatch: NSObjectProtocol?
-    @ObservationIgnored private var lastInput = Date()
+    /// When a button was last pressed (keyboard or controller).
+    @ObservationIgnored private(set) var lastInput = Date()
+    @ObservationIgnored private var lastActivationRequest = Date.distantPast
 
     public init() {
         home = HomeModel(app: self)
@@ -94,9 +96,18 @@ public final class AppModel {
         input.backgroundHomeHandler = { [weak self] in self?.returnFromGame() }
         // With no game running, a controller should always drive the launcher, even if another
         // app took focus.
+        // `-backgroundInput NO` (used when checking screens and timing) leaves a controller to
+        // the app in front, so a copy opened in the background doesn't react to someone playing.
+        let backgroundInput = UserDefaults.standard.object(forKey: "backgroundInput") == nil
+            || UserDefaults.standard.bool(forKey: "backgroundInput")
         input.acceptsInputWhileInactive = { [weak self] in
-            guard let self, launcher.session == nil else { return false }
-            bringToFront()
+            guard backgroundInput, let self, launcher.session == nil else { return false }
+            // Asking LaunchServices to bring us forward is slow and macOS may refuse it, so don't
+            // repeat it on every press of a held direction.
+            if Date().timeIntervalSince(lastActivationRequest) > 3 {
+                lastActivationRequest = Date()
+                bringToFront()
+            }
             return true
         }
         // Keys go to the web page while one is open (Esc still closes it).
@@ -114,11 +125,12 @@ public final class AppModel {
             await reloadLibrary()
             openScreenFromLaunchArgument()
             captureFromLaunchArgument()
+            benchmarkFromLaunchArgument()
         }
     }
 
     /// `-launchGame <title>` starts a game at launch.
-    /// `-openScreen settings|settings:<section>|groups|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
+    /// `-openScreen settings|settings:<section>|power|groups|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|last|middle` opens a page at launch
     /// (handy for screenshots and UI checks).
     private func openScreenFromLaunchArgument() {
         if let title = UserDefaults.standard.string(forKey: "launchGame"),
@@ -133,6 +145,7 @@ public final class AppModel {
             return
         }
         switch screen {
+        case "power": openPowerOptions()
         case "groups":
             let model = LibraryModel(app: self)
             model.tab = .groups
@@ -510,7 +523,7 @@ public final class AppModel {
                       Date().timeIntervalSince(lastInput) >= TimeInterval(minutes * 60) else { continue }
                 if case .sleep? = stack.last { continue }
                 lastInput = Date()
-                openDock(.sleep)
+                enterSleepMode()
             }
         }
     }
@@ -622,6 +635,66 @@ public final class AppModel {
         Task {
             try? await Task.sleep(for: .seconds(delay > 0 ? delay : 4))
             if let data = windowPNG() { try? data.write(to: URL(fileURLWithPath: path)) }
+            NSApp.terminate(nil)
+        }
+    }
+
+    /// `-benchmarkTo <file>`: times what a button press rebuilds on the main menus, writes the
+    /// results and quits. For finding slow pages.
+    private func benchmarkFromLaunchArgument() {
+        guard let path = UserDefaults.standard.string(forKey: "benchmarkTo") else { return }
+        Task {
+            // Let sizes and icons load first, as they would while browsing.
+            try? await Task.sleep(for: .seconds(6))
+            func time(_ runs: Int = 10, _ work: () -> Void) -> Double {
+                let start = Date()
+                for _ in 0..<runs { work() }
+                return Date().timeIntervalSince(start) / Double(runs) * 1000
+            }
+            var lines: [String] = []
+            let settings = makeSettingsMenu()
+            lines.append(String(format: "settings: all sections %.1f ms", time { _ = settings.sections }))
+            for section in settings.sections {
+                lines.append(String(format: "  %@ %.1f ms", section.id, time { _ = settings.sections.first { $0.id == section.id }?.items.count }))
+            }
+            if let game = library.games.first {
+                let options = makeOptionsMenu(for: game)
+                lines.append(String(format: "options: %.1f ms", time { _ = options.sections }))
+            }
+            let user = makeUserMenu()
+            lines.append(String(format: "user page: %.1f ms", time { _ = user.sections }))
+            let cards = makeVirtualCardMenu()
+            lines.append(String(format: "virtual cards: %.1f ms", time { _ = cards.sections }))
+            lines.append(String(format: "home items: %.2f ms", time(100) { _ = home.items }))
+            let library = LibraryModel(app: self)
+            lines.append(String(format: "all software games: %.2f ms", time(100) { _ = library.games }))
+
+            // Real presses: main-thread CPU time per press, drawing included.
+            func cpu() -> Double {
+                var spec = timespec()
+                clock_gettime(CLOCK_THREAD_CPUTIME_ID, &spec)
+                return Double(spec.tv_sec) * 1000 + Double(spec.tv_nsec) / 1_000_000
+            }
+            @MainActor func presses(_ label: String, _ buttons: [NintendoButton]) async {
+                try? await Task.sleep(for: .milliseconds(500))
+                let start = cpu()
+                for button in buttons {
+                    handle(button)
+                    try? await Task.sleep(for: .milliseconds(120))
+                }
+                lines.append(String(format: "press %@: %.1f ms main-thread CPU per press", label, (cpu() - start) / Double(buttons.count)))
+            }
+            stack.removeAll()
+            await presses("HOME", Array(repeating: .right, count: 8) + Array(repeating: .left, count: 8))
+            openLibrary()
+            await presses("All Software", Array(repeating: .right, count: 8) + Array(repeating: .down, count: 2) + Array(repeating: .up, count: 2))
+            stack.removeAll()
+            let menu = makeSettingsMenu()
+            push(.menu(menu))
+            await presses("Settings sidebar", Array(repeating: .down, count: 8) + Array(repeating: .up, count: 8))
+            menu.sectionIndex = menu.sections.firstIndex { $0.id == "data" } ?? 0
+            await presses("Settings Data Management", [.right] + Array(repeating: .down, count: 10) + Array(repeating: .up, count: 5))
+            try? lines.joined(separator: "\n").write(toFile: path, atomically: true, encoding: .utf8)
             NSApp.terminate(nil)
         }
     }

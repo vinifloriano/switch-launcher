@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.7.0 — 2026-11-04
+
+- **Faster with a controller.** System Settings built every page's rows on each press, reading
+  user accounts, every game's drive and free space (about 350 ms per press); now it builds only the
+  page on screen and keeps those answers briefly (under 60 ms). The selection's pulsing glow ran as a
+  SwiftUI animation that used about a third of a CPU core even while idle; it's now a Core
+  Animation layer that costs the launcher nothing.
+- **Controller fixes:** when the launcher isn't the active app, it asks macOS to bring it forward
+  once instead of on every press, and the HOME row no longer jumps when that happens.
+- **Settings scroll:** the sidebar follows the selection, and lists keep the next row in view
+  instead of stopping under the bottom bar.
+- **Power button:** the Sleep Mode shortcut is now Power: Lock Mac, Sleep or Close App. The
+  launcher's Sleep Mode screen stays in System Settings › Sleep Mode and Auto-Sleep.
+- **Guide:** [docs/GUIDE.md](docs/GUIDE.md) explains how the launcher works and how to set up a NAS
+  (Docker) as your own Game Store.
+- `-benchmarkTo <file>` times menu pages and button presses; `-backgroundInput NO` keeps a copy
+  opened in the background from reacting to a controller.
+
 ## 1.6.0 — 2026-11-04
 
 - **Game Store downloads continue where they stopped.** A dropped connection or an error from the

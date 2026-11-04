@@ -118,6 +118,7 @@ struct LibraryView: View {
                                     badgeSymbol: model.app.launcher.runningGameID == game.id ? "play.fill" : nil,
                                     isLoading: IconCache.shared.isLoading(game)
                                 )
+                                .equatable()
                                 Text(game.title)
                                     .font(ui.font(14, isSelected ? .semibold : .regular))
                                     .foregroundStyle(isSelected ? theme.accent : theme.textSecondary)

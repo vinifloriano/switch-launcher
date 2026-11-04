@@ -11,10 +11,14 @@ struct MenuView: View {
         let sections = model.sections
         let sectionIndex = min(model.sectionIndex, max(sections.count - 1, 0))
         let single = sections.count == 1
+        // Rows are built once per update and shared by the pane and the button guide.
+        let section = sections.indices.contains(sectionIndex) ? sections[sectionIndex] : nil
+        let items = section?.items ?? []
 
-        ConsoleScaffold(title: model.title, icon: model.icon(), hints: hints) {
+        ConsoleScaffold(title: model.title, icon: model.icon(), hints: hints(items)) {
             HStack(alignment: .top, spacing: 0) {
                 if !single {
+                    ScrollViewReader { sidebar in
                     ScrollView {
                         VStack(spacing: ui(4)) {
                             ForEach(Array(sections.enumerated()), id: \.element.id) { index, section in
@@ -24,6 +28,8 @@ struct MenuView: View {
                                     isCurrent: index == sectionIndex,
                                     isFocused: model.focus == .sidebar && index == sectionIndex
                                 )
+                                .equatable()
+                                .id(index)
                                 .onTapGesture { model.tapSection(index) }
                             }
                         }
@@ -31,19 +37,28 @@ struct MenuView: View {
                         .padding(.horizontal, ui(30))
                     }
                     .scrollIndicators(.never)
+                    .onChange(of: model.sectionIndex) { old, new in
+                        reveal(new, previous: old, count: sections.count, in: sidebar)
+                    }
+                    // Pages opened on a later section (e.g. from a game's options) start there.
+                    .task {
+                        guard model.sectionIndex > 0 else { return }
+                        sidebar.scrollTo(model.sectionIndex, anchor: .center)
+                    }
+                    }
                     .frame(width: ui(360))
 
                     Rectangle().fill(theme.divider).frame(width: 1)
                 }
 
-                if sections.indices.contains(sectionIndex) {
-                    itemsPane(sections[sectionIndex])
+                if let section {
+                    itemsPane(section, items: items)
                 }
             }
         }
     }
 
-    private func itemsPane(_ section: MenuSection) -> some View {
+    private func itemsPane(_ section: MenuSection, items: [MenuItem]) -> some View {
         ScrollViewReader { proxy in
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
@@ -54,7 +69,7 @@ struct MenuView: View {
                             .padding(.horizontal, ui(18))
                             .padding(.bottom, ui(14))
                     }
-                    ForEach(Array(section.items.enumerated()), id: \.element.id) { index, item in
+                    ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         if case .header = item.kind {
                             Text(item.title.uppercased())
                                 .font(ui.font(14, .semibold))
@@ -76,11 +91,12 @@ struct MenuView: View {
                             meter: item.meter,
                             onSlide: slideAction(for: item)
                         )
+                        .equatable()
                         .id(index)
                         .onTapGesture { model.tapItem(index) }
                         }
                     }
-                    if section.items.isEmpty {
+                    if items.isEmpty {
                         Text("Nothing here yet.")
                             .font(ui.font(18))
                             .foregroundStyle(theme.textSecondary)
@@ -91,13 +107,20 @@ struct MenuView: View {
                 .padding(.horizontal, ui(40))
             }
             .scrollIndicators(.never)
-            .onChange(of: model.itemIndex) { _, index in
-                withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(index) }
+            .onChange(of: model.itemIndex) { old, new in
+                reveal(new, previous: old, count: items.count, in: proxy)
             }
             .onChange(of: model.sectionIndex) { _, _ in
                 proxy.scrollTo(0, anchor: .top)
             }
         }
+    }
+
+    /// Scrolls so the selected row is visible with the next one in the direction of travel, so
+    /// it never ends up against the edge (and under the bottom bar's line).
+    private func reveal(_ index: Int, previous: Int, count: Int, in proxy: ScrollViewProxy) {
+        let ahead = index > previous ? min(index + 1, count - 1) : max(index - 1, 0)
+        withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo(ahead) }
     }
 
     private func accessory(for item: MenuItem) -> ItemAccessory {
@@ -117,8 +140,8 @@ struct MenuView: View {
         return nil
     }
 
-    private var hints: [ButtonHint] {
-        let focused = model.focusedItem
+    private func hints(_ items: [MenuItem]) -> [ButtonHint] {
+        let focused = model.focus == .items && items.indices.contains(model.itemIndex) ? items[model.itemIndex] : nil
         var hints: [ButtonHint] = []
         if focused?.options != nil {
             hints.append(ButtonHint("+", "Options") { model.app.handle(.plus) })

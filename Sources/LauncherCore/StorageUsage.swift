@@ -173,8 +173,34 @@ public final class StorageUsage {
         if appSizes.removeValue(forKey: game.id) != nil { saveAppSizes() }
     }
 
-    /// The disk that holds `url`.
+    /// Lookups below are asked for on every button press in Data Management; disks change slowly,
+    /// so answers are kept for a few seconds.
+    private nonisolated static let cacheLock = NSLock()
+    nonisolated(unsafe) private static var volumeCache: [String: (VolumeUsage?, Date)] = [:]
+    nonisolated(unsafe) private static var drivesCache: ([VolumeUsage], Date)?
+    nonisolated static let cacheLifetime: TimeInterval = 10
+
+    nonisolated(unsafe) private static var volumeURLCache: [String: URL] = [:]
+
+    /// The disk that holds `url`. Which disk a path is on is looked up once; free space (which
+    /// macOS works out with purgeable files included, an expensive call) once per disk.
     public nonisolated static func volume(for url: URL) -> VolumeUsage? {
+        let path = url.path
+        var root = cacheLock.withLock { volumeURLCache[path] }
+        if root == nil {
+            root = (try? url.resourceValues(forKeys: [.volumeURLKey]))?.volume
+            if let root { cacheLock.withLock { volumeURLCache[path] = root } }
+        }
+        let key = (root ?? url).path
+        if let (volume, read) = cacheLock.withLock({ volumeCache[key] }), Date().timeIntervalSince(read) < cacheLifetime {
+            return volume
+        }
+        let volume = readVolume(for: root ?? url)
+        cacheLock.withLock { volumeCache[key] = (volume, Date()) }
+        return volume
+    }
+
+    private nonisolated static func readVolume(for url: URL) -> VolumeUsage? {
         let keys: Set<URLResourceKey> = [.volumeURLKey, .volumeLocalizedNameKey, .volumeTotalCapacityKey,
                                          .volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey,
                                          .volumeIsInternalKey]
@@ -192,6 +218,15 @@ public final class StorageUsage {
     /// Drives software can live on: the Mac's disk and writable local drives (external SSDs,
     /// cards). Network shares and read-only disk images are left out.
     public nonisolated static func drives() -> [VolumeUsage] {
+        if let (drives, read) = cacheLock.withLock({ drivesCache }), Date().timeIntervalSince(read) < cacheLifetime {
+            return drives
+        }
+        let drives = readDrives()
+        cacheLock.withLock { drivesCache = (drives, Date()) }
+        return drives
+    }
+
+    private nonisolated static func readDrives() -> [VolumeUsage] {
         let keys: [URLResourceKey] = [.volumeIsLocalKey, .volumeIsReadOnlyKey, .volumeIsBrowsableKey]
         let mounted = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: keys,
                                                             options: [.skipHiddenVolumes]) ?? []

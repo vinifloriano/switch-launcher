@@ -18,7 +18,7 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 
 - **HOME Menu**: the 12 most recent titles plus All Software, the console's ten round shortcuts
   (Nintendo Switch Online, GameChat, News, Game Store, Album, GameShare, Controllers,
-  Virtual Game Cards, System Settings, Sleep Mode), status bar with clock, network and battery,
+  Virtual Game Cards, System Settings, Power: lock the Mac, sleep or close the launcher), status bar with clock, network and battery,
   and a button guide. Basic White and Basic Black themes, or follow macOS.
 - **Playing**: games open full screen on top of the launcher and get keyboard focus. The launcher
   keeps it there if a background app tries to take it, and comes back when you press HOME on a
@@ -37,6 +37,9 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
   to an external SSD), Users (Mac accounts and save data), Audio, Display, Notifications, Sleep Mode.
 - **Also**: Quick Settings (hold HOME), Capture to Album, Sleep Mode, in-app pages for Nintendo
   Switch Online, News and eShop, boot and launch animations, synthesized interface sounds.
+
+**New here?** The [guide](docs/GUIDE.md) explains how the launcher works and how to set up a NAS as
+your own Game Store, step by step.
 
 ## Requirements
 
@@ -119,7 +122,7 @@ make dist     # dist/Switch-Launcher-<version>.zip + .sha256
 | `SoundKit` | `UISoundPlayer`: interface sounds synthesized at startup |
 | `Features` | Screens and navigation; two-pane pages share `MenuModel` / `MenuView` |
 
-Launch options for checking screens: `-openScreen settings|settings:<section>|groups|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
+Launch options for checking screens: `-openScreen settings|settings:<section>|power|groups|data|saves|system|storage|add|library|album|user|controllers|cards|options|dialog|web|tester|grip|quick|capture|store|last|middle|roundtrip`,
 and `-launchGame <title>` to start a game directly. Add `-captureTo <file.png>` to save the window a few
 seconds later (`-captureDelay <seconds>`) and quit.
 

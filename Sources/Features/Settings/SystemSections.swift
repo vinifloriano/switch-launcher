@@ -160,9 +160,9 @@ extension AppModel {
         MenuSection(
             id: "accessibility", title: "Accessibility", symbol: "accessibility",
             items: [
-                toggleItem("reduceMotion", "Reduce Motion", \.reduceMotion,
+                self.toggleItem("reduceMotion", "Reduce Motion", \.reduceMotion,
                            subtitle: "Skip the startup and software launch animations."),
-                toggleItem("layout", "Nintendo Button Layout", \.nintendoButtonLayout,
+                self.toggleItem("layout", "Nintendo Button Layout", \.nintendoButtonLayout,
                            subtitle: "Use A/B/X/Y as printed on Nintendo controllers."),
                 MenuItem(id: "macAccessibility", title: "Accessibility Settings on Mac", symbol: "arrow.up.forward.app",
                          kind: .action { [unowned self] in openMacSettings("com.apple.Accessibility-Settings.extension") }),
@@ -202,17 +202,17 @@ extension AppModel {
         MenuSection(
             id: "display", title: "Display", symbol: "display",
             items: [
-                toggleItem("fullscreen", "Start in Full Screen", \.startFullScreen),
+                self.toggleItem("fullscreen", "Start in Full Screen", \.startFullScreen),
                 MenuItem(id: "fs", title: "Toggle Full Screen", symbol: "arrow.up.left.and.arrow.down.right",
                          kind: .action { [unowned self] in toggleFullScreen() }),
-                toggleItem("gameFullScreen", "Play Software in Full Screen", \.playInFullScreen,
+                self.toggleItem("gameFullScreen", "Play Software in Full Screen", \.playInFullScreen,
                            subtitle: "Games open full screen on top of the launcher."),
-                toggleItem("keepFront", "Keep Software in Front", \.keepGameInFront,
+                self.toggleItem("keepFront", "Keep Software in Front", \.keepGameInFront,
                            subtitle: "Take focus back when a background app steals it during play."),
-                toggleItem("hide", "Hide Launcher While Playing", \.hideWhilePlaying),
-                toggleItem("homeReturn", "HOME Button Returns to Launcher", \.homeButtonReturnsToLauncher,
+                self.toggleItem("hide", "Hide Launcher While Playing", \.hideWhilePlaying),
+                self.toggleItem("homeReturn", "HOME Button Returns to Launcher", \.homeButtonReturnsToLauncher,
                            subtitle: "Press HOME on a controller during a game to come back here."),
-                toggleItem("boot", "Startup Animation", \.showBootAnimation),
+                self.toggleItem("boot", "Startup Animation", \.showBootAnimation),
             ]
         )
     }
@@ -222,11 +222,11 @@ extension AppModel {
             id: "notifications", title: "Notifications", symbol: "bell.badge.fill",
             footnote: "Messages shown at the top of the screen.",
             items: [
-                toggleItem("notifyUpdates", "Launcher Updates", \.notifyUpdates,
+                self.toggleItem("notifyUpdates", "Launcher Updates", \.notifyUpdates,
                            subtitle: "When a new version of Switch Launcher is available."),
-                toggleItem("notifyDownloads", "Downloads", \.notifyDownloads,
+                self.toggleItem("notifyDownloads", "Downloads", \.notifyDownloads,
                            subtitle: "When software from the Game Store is ready to play."),
-                toggleItem("notifyPlayTime", "Play Time", \.notifyPlayTime,
+                self.toggleItem("notifyPlayTime", "Play Time", \.notifyPlayTime,
                            subtitle: "When today's play time limit is reached."),
             ]
         )
@@ -239,10 +239,10 @@ extension AppModel {
             id: "sleepMode", title: "Sleep Mode", symbol: "moon.fill",
             items: [
                 MenuItem(id: "sleepNow", title: "Enter Sleep Mode", symbol: "power",
-                         kind: .link { [unowned self] in openDock(.sleep) }),
+                         kind: .link { [unowned self] in enterSleepMode() }),
                 MenuItem(id: "autoSleep", title: "Auto-Sleep",
                          subtitle: "On the HOME Menu with nothing pressed. Never during play.",
-                         kind: .choice(names, minutes.firstIndex(of: settings.value.autoSleepMinutes) ?? 0) { [unowned self] in
+                         kind: .choice(names, minutes.firstIndex(of: self.settings.value.autoSleepMinutes) ?? 0) { [unowned self] in
                              settings.value.autoSleepMinutes = minutes[$0]
                          }),
                 MenuItem(id: "displaySleep", title: "Turn Off Display", symbol: "display",

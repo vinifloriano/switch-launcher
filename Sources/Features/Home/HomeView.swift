@@ -78,6 +78,9 @@ struct HomeView: View {
         .onChange(of: items.map(\.id)) { _, _ in recentre() }
         .onChange(of: ui.factor) { _, _ in recentre(animated: false) }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            // A controller press can make the launcher active; moving the row then would undo
+            // the move the press just made.
+            guard Date().timeIntervalSince(app.lastInput) > 1 else { return }
             recentre(animated: false)
         }
         .overlay {
@@ -163,6 +166,7 @@ struct HomeView: View {
                         badgeSymbol: app.launcher.runningGameID == game.id ? "play.fill" : nil,
                         isLoading: IconCache.shared.isLoading(game)
                     )
+                    .equatable()
                 case .allSoftware:
                     SymbolTile(
                         symbol: "square.grid.3x3.fill",

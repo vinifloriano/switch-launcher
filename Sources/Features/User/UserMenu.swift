@@ -24,7 +24,7 @@ extension AppModel {
             id: "userSettings", title: "User Settings", symbol: "person.crop.circle.badge.checkmark",
             items: [
                 MenuItem(id: "card", title: s.userName, subtitle: "Your profile on this launcher",
-                         image: avatarImage(diameter: 56), kind: .info("")),
+                         image: self.avatarImage(diameter: 56), kind: .info("")),
                 MenuItem(id: "name", title: "Nickname", subtitle: s.userName, symbol: "pencil",
                          kind: .action { [unowned self] in editNickname() }),
                 MenuItem(id: "icon", title: "Icon", kind: .choice(
@@ -42,7 +42,7 @@ extension AppModel {
                 .header("Mac Account"),
                 MenuItem(id: "macUser", title: mac?.fullName ?? NSFullUserName(),
                          subtitle: "Signed in as \(NSUserName()) · save data is kept per Mac user",
-                         image: mac?.picture ?? initialsImage(mac?.fullName ?? NSFullUserName()),
+                         image: mac?.picture ?? self.initialsImage(mac?.fullName ?? NSFullUserName()),
                          kind: .link { [unowned self] in push(.menu(makeSettingsMenu(startingAt: "users"))) }),
             ]
         )
@@ -59,7 +59,7 @@ extension AppModel {
                 ? "Software you play will show up here."
                 : "Total play time: \(PlayTimeFormatter.duration(total))",
             items: played.map { game in
-                let record = history.record(for: game.id)
+                let record = self.history.record(for: game.id)
                 return MenuItem(
                     id: game.id,
                     title: game.title,

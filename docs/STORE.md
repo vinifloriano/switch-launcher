@@ -10,6 +10,9 @@ store-publish ──(SMB)──▶ NAS folder = bucket `switch-games` ◀──(
                                games/<slug>/icon.png
 ```
 
+To set up a store on your own NAS with Docker, follow [GUIDE.md](GUIDE.md#setting-up-a-nas-as-your-game-store).
+This page describes the homelab setup (Kubernetes + TrueNAS) and the publishing tool in detail.
+
 ## Server (homelab)
 
 ```bash
@@ -86,7 +89,7 @@ publishing a new version replaces the old archive.
 
 ## Launcher
 
-Open the Game Store and choose **Sign In** (or System Settings › Store): enter the home-network
+Open the Game Store and choose **Sign In** (or System Settings › Internet › Game Store Server): enter the home-network
 address, optionally the remote address, and the `launcher` username and password. The password is
 saved in the launcher's settings file (`~/Library/Application Support/SwitchLauncher/settings.json`,
 readable only by your user).
