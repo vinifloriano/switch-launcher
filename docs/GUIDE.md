@@ -55,6 +55,10 @@ So:
 - **Deleting a game keeps its save data.** Reinstall it, from the Game Store or anywhere else, and
   you carry on where you left off.
 - **Save data belongs to the Mac user.** Each person signed in to the Mac has their own.
+- **Back up one save** by pressing + on a game and opening **Save Data Backups**, or by selecting
+  the title in System Settings › Users. **Back Up All Save Data** creates a snapshot for every title.
+- **Restore Latest Backup** first snapshots the current save, so restoring never removes the version
+  you were playing. The backup folder can be changed to an external drive in System Settings › Users.
 - **Deleting save data** is only in System Settings › Users, and asks twice. It goes to the Trash.
 
 ### Storage and drives
@@ -77,6 +81,9 @@ folder joins the library.
 | Sleep Mode | Auto-Sleep on the HOME Menu, turn off the display, put the Mac to sleep |
 | System | Version, Software Update (checks GitHub for new releases), data folder |
 
+The interface follows the language selected in macOS. English, Brazilian Portuguese and Spanish
+are included; unsupported languages fall back to English.
+
 ### Where things are kept
 
 | What | Where |
@@ -84,6 +91,7 @@ folder joins the library.
 | Settings (including the store password) | `~/Library/Application Support/SwitchLauncher/settings.json` (readable only by you) |
 | Play history | `~/Library/Application Support/SwitchLauncher/play-history.json` and `play-days.json` |
 | Cached game sizes | `~/Library/Application Support/SwitchLauncher/app-sizes.json` |
+| Save backups | `~/Documents/Switch/Save Backups/<title ID>/` by default; configurable in System Settings › Users |
 | Downloads in progress | `<install folder>/.switch-store/` |
 | Launcher logs | `log stream --predicate 'subsystem == "dev.vinicius.switchlauncher"'` |
 

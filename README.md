@@ -12,9 +12,10 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 
 ## Demo
 
-[![Switch Launcher demo — click to play](docs/screenshots/demo.png)](Demo.mp4)
+https://github.com/user-attachments/assets/6026eb21-3cc5-456a-be9d-f4183760b6a7
 
-[Watch the two-minute demo in 720p](Demo.mp4) (H.264/AAC, about 68 MB).
+[Watch or download the full two-minute demo in 720p](https://github.com/vinifloriano/switch-launcher/releases/download/v1.9.0/Demo.mp4)
+(H.264/AAC, about 68 MB).
 
 | HOME Menu | All Software | System Settings |
 |---|---|---|
@@ -41,6 +42,8 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
   verification. See [docs/STORE.md](docs/STORE.md).
 - **Local save data**: deleting software does not delete its save data. Download the game again
   from your Game Store and continue from the same local save.
+- **Save backups**: create timestamped snapshots for one game or every title, choose an external
+  backup folder, and restore safely—the current save is backed up automatically before replacement.
 - **Controllers**: player slots with lights and battery, Change Grip/Order (L + R), Find
   Controllers (vibration), Test Input Devices (live buttons, sticks with movement trails, analog
   triggers) and pairing.
@@ -57,6 +60,8 @@ your own Game Store, step by step.
 
 - macOS 15 or later on Apple silicon
 - Xcode 16 or later (Swift 6 toolchain) to build
+
+The interface follows your macOS language in English, Brazilian Portuguese and Spanish.
 
 ## Install
 

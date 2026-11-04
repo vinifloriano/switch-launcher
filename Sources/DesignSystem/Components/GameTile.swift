@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Square software tile with the game's cover icon.
-public struct GameTile: View, Equatable {
+public struct GameTile: View, @MainActor Equatable {
     let image: NSImage?
     let title: String
     let size: CGFloat
@@ -111,7 +111,7 @@ public struct SymbolTile: View {
             Image(systemName: symbol)
                 .font(.system(size: size * 0.24, weight: .semibold))
                 .foregroundStyle(theme.accent)
-            Text(title)
+            Text(L10n.text(title))
                 .font(.system(size: size * 0.075, weight: .semibold, design: .rounded))
                 .foregroundStyle(theme.textPrimary)
         }

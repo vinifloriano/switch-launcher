@@ -63,7 +63,7 @@ struct MenuView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     if let footnote = section.footnote {
-                        Text(footnote)
+                        Text(L10n.text(footnote))
                             .font(ui.font(16))
                             .foregroundStyle(theme.textSecondary)
                             .padding(.horizontal, ui(18))
@@ -71,7 +71,7 @@ struct MenuView: View {
                     }
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
                         if case .header = item.kind {
-                            Text(item.title.uppercased())
+                            Text(L10n.text(item.title).uppercased())
                                 .font(ui.font(14, .semibold))
                                 .tracking(ui(0.6))
                                 .foregroundStyle(theme.textSecondary)
@@ -97,7 +97,7 @@ struct MenuView: View {
                         }
                     }
                     if items.isEmpty {
-                        Text("Nothing here yet.")
+                        Text(L10n.text("Nothing here yet."))
                             .font(ui.font(18))
                             .foregroundStyle(theme.textSecondary)
                             .padding(ui(18))

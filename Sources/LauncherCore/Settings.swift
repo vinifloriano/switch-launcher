@@ -54,6 +54,8 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
     public var dailyLimitMinutes = 0
     /// Groups of software, shown under All Software › Groups.
     public var groups: [SoftwareGroup] = []
+    /// Timestamped save snapshots. May point to an external drive.
+    public var saveBackupFolder: String = LauncherSettings.defaultSaveBackupFolder
 
     public init() {}
 
@@ -68,6 +70,11 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
 
     public static var defaultUserName: String {
         NSFullUserName().split(separator: " ").first.map(String.init) ?? "Player"
+    }
+
+    public static var defaultSaveBackupFolder: String {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Documents/Switch/Save Backups", isDirectory: true).path
     }
 
     // Decoded field by field so settings saved by older versions keep working.
@@ -106,6 +113,7 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
         parentalPINHash = value(.parentalPINHash, d.parentalPINHash)
         dailyLimitMinutes = value(.dailyLimitMinutes, d.dailyLimitMinutes)
         groups = value(.groups, d.groups)
+        saveBackupFolder = value(.saveBackupFolder, d.saveBackupFolder)
     }
 }
 

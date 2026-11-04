@@ -100,7 +100,7 @@ public final class MacControls {
 
     // MARK: Display
 
-    private enum Display {
+    @MainActor private enum Display {
         private typealias Get = @convention(c) (CGDirectDisplayID, UnsafeMutablePointer<Float>) -> Int32
         private typealias Set = @convention(c) (CGDirectDisplayID, Float) -> Int32
         // DisplayServices is what the brightness keys use; it only drives Apple displays.
@@ -212,7 +212,7 @@ public final class MacControls {
 
     // MARK: Bluetooth
 
-    private enum Bluetooth {
+    @MainActor private enum Bluetooth {
         private typealias Get = @convention(c) () -> Int32
         private typealias Set = @convention(c) (Int32) -> Void
         // The same calls the Bluetooth menu uses; IOBluetooth exports them without a header.
@@ -261,7 +261,7 @@ public final class MacControls {
                 var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
                 if getnameinfo(address, socklen_t(address.pointee.sa_len), &host, socklen_t(host.count),
                                nil, 0, NI_NUMERICHOST) == 0 {
-                    return String(cString: host)
+                    return String(decoding: host.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
                 }
             }
             return nil

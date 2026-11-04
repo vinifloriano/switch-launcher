@@ -33,11 +33,11 @@ public struct ConsoleDialog: View {
             Color.black.opacity(0.55).ignoresSafeArea()
             VStack(spacing: 0) {
                 VStack(spacing: ui(12)) {
-                    Text(message)
+                    Text(L10n.text(message))
                         .font(ui.font(23, .medium))
                         .foregroundStyle(theme.textPrimary)
                     if let detail {
-                        Text(detail)
+                        Text(L10n.text(detail))
                             .font(ui.font(17))
                             .foregroundStyle(theme.textSecondary)
                     }
@@ -51,7 +51,7 @@ public struct ConsoleDialog: View {
                 HStack(spacing: 0) {
                     ForEach(buttons.indices, id: \.self) { index in
                         Button { onSelect(index) } label: {
-                            Text(buttons[index])
+                            Text(L10n.text(buttons[index]))
                                 .font(ui.font(21, .medium))
                                 .foregroundStyle(index == destructiveIndex ? theme.destructive : theme.accent)
                                 .frame(maxWidth: .infinity)
@@ -91,7 +91,7 @@ public struct ToastView: View {
             Image(systemName: symbol)
                 .font(.system(size: ui(20), weight: .semibold))
                 .foregroundStyle(theme.accent)
-            Text(message)
+            Text(L10n.text(message))
                 .font(ui.font(18, .medium))
                 .foregroundStyle(theme.textPrimary)
         }

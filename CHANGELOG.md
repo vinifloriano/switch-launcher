@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.10.0 — 2026-11-04
+
+- **Save backups and restore:** create timestamped snapshots for one title or every save, choose an
+  external backup folder, and safely restore the latest snapshot. The current save is backed up
+  before replacement, and untrusted title metadata cannot escape the backup folder.
+- **Multiple languages:** core navigation and save-management flows now follow macOS in English,
+  Brazilian Portuguese or Spanish, with English fallback.
+- **Switch-style software controls:** a running title exposes a prominent **Close Software** action
+  with confirmation and an unsaved-progress warning.
+- **Playable README demo:** a compact preview plays directly on GitHub while the full 720p demo is
+  delivered as a release asset instead of inflating the current source tree.
+- **Swift 6 and CI:** migrated the package to Swift 6 language mode, resolved strict-concurrency
+  issues, and pinned current Node 24-compatible GitHub Actions to immutable commits.
+
 ## 1.9.0 — 2026-11-04
 
 - **Product demo:** added a Git-friendly, two-minute 720p H.264 demo with a clickable preview in

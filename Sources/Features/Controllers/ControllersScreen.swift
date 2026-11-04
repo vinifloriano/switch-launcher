@@ -37,11 +37,8 @@ public final class ControllersModel: InputResponder {
     init(app: AppModel) {
         self.app = app
         refresh()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] timer in
-            MainActor.assumeIsolated {
-                guard let self else { return timer.invalidate() }
-                self.refresh()
-            }
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refresh() }
         }
     }
 
@@ -135,7 +132,7 @@ struct ControllersScreen: View {
                             Image(systemName: action.symbol)
                                 .font(.system(size: ui(36), weight: .semibold))
                                 .foregroundStyle(theme.accent)
-                            Text(action.title)
+                            Text(L10n.text(action.title))
                                 .font(ui.font(17, .medium))
                                 .foregroundStyle(theme.textPrimary)
                         }

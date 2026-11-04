@@ -45,7 +45,7 @@ struct LibraryView: View {
 
     private func tabButton(_ title: String, _ tab: LibraryModel.Tab) -> some View {
         let isCurrent = model.tab == tab
-        return Text(title)
+        return Text(L10n.text(title))
             .font(ui.font(17, isCurrent ? .semibold : .regular))
             .foregroundStyle(isCurrent ? theme.accent : theme.textSecondary)
             .padding(.horizontal, ui(26))
@@ -90,7 +90,7 @@ struct LibraryView: View {
     private func labeled<Tile: View>(_ title: String, isSelected: Bool, @ViewBuilder tile: () -> Tile) -> some View {
         VStack(spacing: ui(10)) {
             tile()
-            Text(title)
+            Text(L10n.text(title))
                 .font(ui.font(14, isSelected ? .semibold : .regular))
                 .foregroundStyle(isSelected ? theme.accent : theme.textSecondary)
                 .lineLimit(1)
@@ -172,7 +172,7 @@ struct LibraryView: View {
         let title = model.groupID == nil ? "Add Software" : "Add or Remove"
         return VStack(spacing: ui(10)) {
             SymbolTile(symbol: model.groupID == nil ? "plus" : "checklist", title: title, size: ui(tile), isSelected: isSelected)
-            Text(title)
+            Text(L10n.text(title))
                 .font(ui.font(14, isSelected ? .semibold : .regular))
                 .foregroundStyle(isSelected ? theme.accent : theme.textSecondary)
                 .lineLimit(1)

@@ -36,28 +36,22 @@ public final class WebModel: InputResponder {
 
         observations = [
             webView.observe(\.title) { [weak self] view, _ in
-                let value = view.title ?? ""
-                Task { @MainActor in self?.pageTitle = value }
+                MainActor.assumeIsolated { self?.pageTitle = view.title ?? "" }
             },
             webView.observe(\.url) { [weak self] view, _ in
-                let value = view.url?.host() ?? ""
-                Task { @MainActor in self?.host = value }
+                MainActor.assumeIsolated { self?.host = view.url?.host() ?? "" }
             },
             webView.observe(\.estimatedProgress) { [weak self] view, _ in
-                let value = view.estimatedProgress
-                Task { @MainActor in self?.progress = value }
+                MainActor.assumeIsolated { self?.progress = view.estimatedProgress }
             },
             webView.observe(\.isLoading) { [weak self] view, _ in
-                let value = view.isLoading
-                Task { @MainActor in self?.isLoading = value }
+                MainActor.assumeIsolated { self?.isLoading = view.isLoading }
             },
             webView.observe(\.canGoBack) { [weak self] view, _ in
-                let value = view.canGoBack
-                Task { @MainActor in self?.canGoBack = value }
+                MainActor.assumeIsolated { self?.canGoBack = view.canGoBack }
             },
             webView.observe(\.canGoForward) { [weak self] view, _ in
-                let value = view.canGoForward
-                Task { @MainActor in self?.canGoForward = value }
+                MainActor.assumeIsolated { self?.canGoForward = view.canGoForward }
             },
         ]
         webView.load(URLRequest(url: url))

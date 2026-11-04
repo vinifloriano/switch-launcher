@@ -72,13 +72,13 @@ public struct ConsoleScaffold<Content: View, FooterLeading: View>: View {
         VStack(spacing: 0) {
             HStack(spacing: ui(16)) {
                 iconView
-                Text(title)
+                Text(L10n.text(title))
                     .font(ui.font(28, .medium))
                     .foregroundStyle(theme.textPrimary)
                     .lineLimit(1)
                 Spacer()
                 if let trailing {
-                    Text(trailing)
+                    Text(L10n.text(trailing))
                         .font(ui.font(17))
                         .foregroundStyle(theme.textSecondary)
                 }

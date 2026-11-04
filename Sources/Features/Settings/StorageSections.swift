@@ -82,32 +82,43 @@ extension AppModel {
         var items: [MenuItem] = [.header("Users on This Mac")]
         items += users.map { user in
             MenuItem(id: "user:" + user.id, title: user.fullName,
-                     subtitle: user.isCurrent ? "Signed in · \(user.accountName)" : user.accountName,
+                     subtitle: user.isCurrent ? L10n.format("Signed in · %@", user.accountName) : user.accountName,
                      image: user.picture ?? initialsImage(user.fullName),
-                     kind: .info(user.isCurrent ? "Playing now" : ""))
+                     kind: .info(user.isCurrent ? L10n.text("Playing now") : ""))
         }
         items += [
             .header("Launcher Profile"),
-            MenuItem(id: "profile", title: settings.value.userName, subtitle: "Nickname, icon and play activity",
+            MenuItem(id: "profile", title: settings.value.userName, subtitle: L10n.text("Nickname, icon and play activity"),
                      image: avatarImage(), kind: .link { [unowned self] in openUserPage() }),
         ]
         let saves = storage.saves
-        items.append(.header("Save Data · \(current?.fullName ?? NSFullUserName())"))
-        items.append(MenuItem(id: "savesTotal", title: "Total", subtitle: "\(saves.count) titles",
+        items.append(.header(L10n.format("Save Data · %@", current?.fullName ?? NSFullUserName())))
+        items.append(MenuItem(id: "savesTotal", title: "Total", subtitle: L10n.format("%@ titles", String(saves.count)),
                               kind: .info(ByteFormatter.string(saves.reduce(0) { $0 + $1.size }))))
         items += saves.map { save in
             let game = library.games.first { $0.titleID?.uppercased() == save.titleID }
             return MenuItem(id: "save:" + save.titleID, title: saveTitle(save),
-                            subtitle: "\(game == nil ? "Not installed" : "Installed") · \(ByteFormatter.string(save.size))",
+                            subtitle: L10n.format(game == nil ? "Not installed · %@" : "Installed · %@",
+                                                  ByteFormatter.string(save.size)),
                             image: game.flatMap { IconCache.shared.icon(for: $0) },
                             symbol: game == nil ? "externaldrive.badge.person.crop" : nil,
-                            kind: .action { [unowned self] in confirmDeleteSave(save) })
+                            kind: .link { [unowned self] in openSaveDataOptions(save) })
         }
+        items += [
+            .header("Save Backups"),
+            MenuItem(id: "backupAll", title: "Back Up All Save Data",
+                     subtitle: "Creates one timestamped snapshot for every title.",
+                     symbol: "externaldrive.badge.plus",
+                     kind: .action { [unowned self] in backupAllSaves() }),
+            MenuItem(id: "backupFolder", title: "Backup Folder", subtitle: saveBackupRoot.path,
+                     symbol: "folder.fill", kind: .action { [unowned self] in chooseSaveBackupFolder() }),
+        ]
         let others = users.filter { !$0.isCurrent }
+        let footnote = L10n.text("Each person on this Mac has their own save data. It stays when software is deleted and comes back when it's installed again, from the Game Store too. Select a title to manage its save data.")
+            + (others.isEmpty ? "" : L10n.format(" To see %@'s save data, sign in to the Mac as them.", others.map(\.fullName).joined(separator: ", ")))
         return MenuSection(
             id: "users", title: "Users", symbol: "person.2.fill",
-            footnote: "Each person on this Mac has their own save data. It stays when software is deleted and comes back when it's installed again, from the Game Store too. Select a title to delete its save data."
-                + (others.isEmpty ? "" : " To see \(others.map(\.fullName).joined(separator: ", "))'s save data, sign in to the Mac as them."),
+            footnote: footnote,
             items: items
         )
     }

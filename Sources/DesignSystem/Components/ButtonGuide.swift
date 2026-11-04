@@ -61,7 +61,7 @@ public struct ButtonGuide: View {
                 Button(action: hint.action) {
                     HStack(spacing: ui(8)) {
                         ButtonGlyph(hint.glyph)
-                        Text(hint.title)
+                        Text(L10n.text(hint.title))
                             .font(ui.font(18))
                             .foregroundStyle(theme.textPrimary)
                     }

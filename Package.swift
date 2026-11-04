@@ -27,5 +27,5 @@ let package = Package(
         .executableTarget(name: "store-publish", dependencies: ["LauncherCore"], path: "Sources/StorePublish"),
         .testTarget(name: "LauncherCoreTests", dependencies: ["LauncherCore"]),
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )

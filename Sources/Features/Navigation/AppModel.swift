@@ -14,7 +14,7 @@ public protocol InputResponder: AnyObject {
 
 /// Screens pushed on top of the HOME Menu.
 @MainActor
-public enum Route: @preconcurrency Identifiable {
+public enum Route: @MainActor Identifiable {
     case library(LibraryModel)
     case menu(MenuModel)
     case album(AlbumModel)
@@ -516,7 +516,7 @@ public final class AppModel {
         guard launcher.runningGameID == game.id else { return }
         confirm(
             message: "Close the software?",
-            detail: "Any unsaved progress in \(game.title) will be lost.",
+            detail: "Any unsaved progress will be lost.",
             confirmTitle: "Close"
         ) { [weak self] in
             Task { await self?.launcher.close() }

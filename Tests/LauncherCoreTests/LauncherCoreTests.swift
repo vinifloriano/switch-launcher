@@ -123,6 +123,62 @@ final class PersistenceTests: XCTestCase {
     }
 }
 
+final class SaveBackupServiceTests: XCTestCase {
+    private var folder: URL!
+
+    override func setUpWithError() throws {
+        folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    func testBackupAndRestorePreserveBothVersions() throws {
+        let titleID = "0100TEST"
+        let saveURL = folder.appendingPathComponent("saves/\(titleID)", isDirectory: true)
+        try FileManager.default.createDirectory(at: saveURL, withIntermediateDirectories: true)
+        let state = saveURL.appendingPathComponent("progress.dat")
+        try Data("checkpoint-one".utf8).write(to: state)
+        let service = SaveBackupService(root: folder.appendingPathComponent("backups"))
+        let first = try service.backup(SaveData(titleID: titleID, url: saveURL, size: 0))
+
+        try Data("checkpoint-two".utf8).write(to: state, options: .atomic)
+        try service.restore(first, to: saveURL)
+
+        XCTAssertEqual(try String(contentsOf: state, encoding: .utf8), "checkpoint-one")
+        let backups = service.backups(for: titleID)
+        XCTAssertEqual(backups.count, 2, "restore should first preserve the current save")
+        XCTAssertTrue(backups.contains { backup in
+            (try? String(contentsOf: backup.url.appendingPathComponent("progress.dat"), encoding: .utf8)) == "checkpoint-two"
+        })
+    }
+
+    func testRestoreRejectsBackupOutsideConfiguredRoot() throws {
+        let titleID = "0100TEST"
+        let outside = folder.appendingPathComponent("outside", isDirectory: true)
+        try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+        let service = SaveBackupService(root: folder.appendingPathComponent("backups"))
+        let backup = SaveBackup(titleID: titleID, url: outside, createdAt: Date(), size: 0)
+
+        XCTAssertThrowsError(try service.restore(backup, to: folder.appendingPathComponent("saves/\(titleID)"))) {
+            XCTAssertEqual($0 as? SaveBackupError, .invalidBackup)
+        }
+    }
+
+    func testBackupRejectsTitleIDWithPathTraversal() throws {
+        let saveURL = folder.appendingPathComponent("save", isDirectory: true)
+        try FileManager.default.createDirectory(at: saveURL, withIntermediateDirectories: true)
+        let service = SaveBackupService(root: folder.appendingPathComponent("backups"))
+
+        XCTAssertThrowsError(try service.backup(SaveData(titleID: "../outside", url: saveURL, size: 0))) {
+            XCTAssertEqual($0 as? SaveBackupError, .invalidTitleID)
+        }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: folder.appendingPathComponent("outside").path))
+    }
+}
+
 final class S3SignerTests: XCTestCase {
     /// AWS's published example for query-string (presigned) authentication.
     func testMatchesAWSPresignExample() throws {

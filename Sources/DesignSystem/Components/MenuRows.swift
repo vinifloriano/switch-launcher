@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// Left-hand category entry in two-pane pages (System Settings, software options...).
-public struct SidebarRow: View, Equatable {
+public struct SidebarRow: View, @MainActor Equatable {
     let title: String
     let symbol: String?
     let isCurrent: Bool
@@ -32,7 +32,7 @@ public struct SidebarRow: View, Equatable {
                     .font(.system(size: ui(18), weight: .semibold))
                     .frame(width: ui(24))
             }
-            Text(title)
+            Text(L10n.text(title))
                 .font(ui.font(20, isCurrent ? .semibold : .regular))
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -111,7 +111,7 @@ struct MeterView: View {
                 ForEach(meter.segments) { segment in
                     HStack(spacing: ui(7)) {
                         Circle().fill(segment.color).frame(width: ui(11), height: ui(11))
-                        Text(segment.label)
+                        Text(L10n.text(segment.label))
                             .font(ui.font(14, .medium))
                             .foregroundStyle(theme.textPrimary)
                         Text(segment.detail)
@@ -160,7 +160,7 @@ struct LevelSlider: View {
 }
 
 /// A row in the right-hand pane: optional icon, title + subtitle, accessory value.
-public struct ItemRow: View, Equatable {
+public struct ItemRow: View, @MainActor Equatable {
     let title: String
     let subtitle: String?
     let image: NSImage?
@@ -239,12 +239,12 @@ public struct ItemRow: View, Equatable {
                     .frame(width: ui(32))
             }
             VStack(alignment: .leading, spacing: ui(3)) {
-                Text(title)
+                Text(L10n.text(title))
                     .font(ui.font(20))
                     .foregroundStyle(isDestructive ? theme.destructive : theme.textPrimary)
                     .lineLimit(1)
                 if let subtitle {
-                    Text(subtitle)
+                    Text(L10n.text(subtitle))
                         .font(ui.font(14))
                         .foregroundStyle(theme.textSecondary)
                         .lineLimit(2)
@@ -262,12 +262,12 @@ public struct ItemRow: View, Equatable {
         case .none:
             EmptyView()
         case .text(let value):
-            Text(value)
+            Text(L10n.text(value))
                 .font(ui.font(18))
                 .foregroundStyle(theme.textSecondary)
                 .lineLimit(1)
         case .choice(let value):
-            Text(value)
+            Text(L10n.text(value))
                 .font(ui.font(19, .medium))
                 .foregroundStyle(theme.accent)
         case .toggle(let isOn):
@@ -295,7 +295,7 @@ public struct ConsoleToggle: View {
 
     public var body: some View {
         HStack(spacing: ui(10)) {
-            Text(isOn ? "On" : "Off")
+            Text(L10n.text(isOn ? "On" : "Off"))
                 .font(ui.font(17, .medium))
                 .foregroundStyle(isOn ? theme.accent : theme.textSecondary)
             ZStack(alignment: isOn ? .trailing : .leading) {

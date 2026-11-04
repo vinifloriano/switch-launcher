@@ -30,6 +30,12 @@ public struct SaveData: Identifiable, Hashable, Sendable {
     public let size: Int64
 
     public var id: String { titleID }
+
+    public init(titleID: String, url: URL, size: Int64) {
+        self.titleID = titleID
+        self.url = url
+        self.size = size
+    }
 }
 
 /// An app's measured size, with what identified the bundle when it was measured.
@@ -93,6 +99,15 @@ public final class StorageUsage {
     public func hasSaveData(titleID: String?) -> Bool {
         guard let titleID, !titleID.isEmpty else { return false }
         return FileManager.default.fileExists(atPath: Self.savesRoot.appendingPathComponent(titleID.uppercased()).path)
+    }
+
+    public func saveData(titleID: String?) -> SaveData? {
+        guard let titleID, !titleID.isEmpty else { return nil }
+        let normalized = titleID.uppercased()
+        if let measured = saves.first(where: { $0.titleID == normalized }) { return measured }
+        let url = Self.savesRoot.appendingPathComponent(normalized, isDirectory: true)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return SaveData(titleID: normalized, url: url, size: Self.size(of: url))
     }
 
     /// Moves one title's save data to the Trash.

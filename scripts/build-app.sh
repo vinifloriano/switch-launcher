@@ -40,6 +40,9 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/SwitchLauncher" "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/"
+for localization in Resources/*.lproj; do
+    cp -R "$localization" "$APP/Contents/Resources/"
+done
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :SLGitCommit string $COMMIT" "$APP/Contents/Info.plist"

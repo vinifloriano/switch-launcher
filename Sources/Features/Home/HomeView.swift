@@ -160,7 +160,7 @@ struct HomeView: View {
         let isLast = index == count - 1
         let reach = ui(Self.edgeInset - 14)
         let room = isFirst || isLast ? ui(tileSize) + 2 * reach : ui(tileSize) * 3
-        let label = Text(text)
+        let label = Text(L10n.text(text))
             .font(ui.font(22, .medium))
             .foregroundStyle(theme.accent)
             .lineLimit(1)
@@ -177,12 +177,12 @@ struct HomeView: View {
     private var emptyLibraryHint: some View {
         let scanning = app.library.isScanning
         return VStack(alignment: .leading, spacing: ui(6)) {
-            Text(scanning ? "Looking for software…" : "No software found")
+            Text(L10n.text(scanning ? "Looking for software…" : "No software found"))
                 .font(ui.font(22, .medium))
                 .foregroundStyle(theme.textPrimary)
-            Text(scanning
+            Text(L10n.text(scanning
                  ? "If macOS asks for access to your Documents folder, choose Allow."
-                 : "Add folders with native ports in System Settings › Library.")
+                 : "Add folders with native ports in System Settings › Library."))
                 .font(ui.font(16))
                 .foregroundStyle(theme.textSecondary)
         }
@@ -199,7 +199,7 @@ struct HomeView: View {
                 let isSelected = home.row == .dock && home.dockIndex == index
                 CircleIconButton(symbol: item.symbol, tint: item.tint, diameter: ui(66), isSelected: isSelected)
                     .overlay(alignment: .top) {
-                        Text(item.title)
+                        Text(L10n.text(item.title))
                             .font(ui.font(17, .medium))
                             .foregroundStyle(theme.accent)
                             .fixedSize()

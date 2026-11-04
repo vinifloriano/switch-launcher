@@ -27,11 +27,8 @@ public final class ControllerTestModel: InputResponder {
             guard let self, pressed, self.selectedID != id else { return }
             self.selectedID = id
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] timer in
-            MainActor.assumeIsolated {
-                guard let self else { return timer.invalidate() }
-                self.tick()
-            }
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.tick() }
         }
     }
 

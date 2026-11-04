@@ -15,6 +15,14 @@ extension AppModel {
                          kind: .action { [unowned self] in launch(game) }),
                 MenuItem(id: "version", title: "Version", kind: .info(game.version ?? "—")),
             ]
+            if running {
+                info.insert(
+                    MenuItem(id: "close", title: "Close Software", subtitle: "Ends the running game.",
+                             symbol: "xmark.circle.fill", isDestructive: true,
+                             kind: .action { [unowned self] in confirmClose(game) }),
+                    at: 1
+                )
+            }
             if let titleID = game.titleID {
                 info.append(MenuItem(id: "titleID", title: "Title ID", kind: .info(titleID)))
             }
@@ -44,9 +52,13 @@ extension AppModel {
                 MenuItem(id: "loaded", title: "Show on HOME Menu", subtitle: "Load or eject the virtual game card.",
                          kind: .toggle(isLoaded(game)) { [unowned self] in setLoaded(game, $0) }),
             ]
-            if running {
-                data.append(MenuItem(id: "close", title: "Close Software", symbol: "xmark.circle.fill", isDestructive: true,
-                                     kind: .action { [unowned self] in confirmClose(game) }))
+            if let save = storage.saveData(titleID: game.titleID) {
+                data.append(MenuItem(
+                    id: "saveBackups", title: "Save Data Backups",
+                    subtitle: "Back up or restore this game's local save data.",
+                    symbol: "externaldrive.badge.timemachine",
+                    kind: .link { [unowned self] in openSaveDataOptions(save) }
+                ))
             }
             if !isAddedApp(game), StorageUsage.drives().count > 1 {
                 let moving = storage.moving[game.id]
@@ -150,6 +162,155 @@ extension AppModel {
             ?? store.catalog.games.first { $0.titleID?.uppercased() == save.titleID }?.title
             ?? storage.knownTitles[save.titleID]
             ?? save.titleID
+    }
+
+    var saveBackupRoot: URL {
+        URL(
+            fileURLWithPath: (settings.value.saveBackupFolder as NSString).expandingTildeInPath,
+            isDirectory: true
+        )
+    }
+
+    var saveBackupService: SaveBackupService {
+        SaveBackupService(root: saveBackupRoot)
+    }
+
+    func openSaveDataOptions(_ save: SaveData) {
+        push(.menu(makeSaveDataMenu(save)))
+    }
+
+    func makeSaveDataMenu(_ save: SaveData) -> MenuModel {
+        MenuModel(title: saveTitle(save), icon: .symbol("externaldrive.badge.person.crop"), app: self) { [unowned self] in
+            let backups = saveBackupService.backups(for: save.titleID)
+            let latest = backups.first
+            var items = [
+                MenuItem(id: "size", title: "Current Save Data", kind: .info(ByteFormatter.string(save.size))),
+                MenuItem(id: "backup", title: "Back Up Now", subtitle: "Creates a timestamped local snapshot.",
+                         symbol: "externaldrive.badge.plus",
+                         kind: .action { [unowned self] in backupSave(save) }),
+            ]
+            if let latest {
+                items.append(MenuItem(
+                    id: "restore", title: "Restore Latest Backup",
+                    subtitle: "\(PlayTimeFormatter.relative(latest.createdAt)) · \(ByteFormatter.string(latest.size))",
+                    symbol: "clock.arrow.circlepath", isDestructive: true,
+                    kind: .action { [unowned self] in confirmRestore(latest, save: save) }
+                ))
+            }
+            items += [
+                MenuItem(id: "folder", title: "Show Backups in Finder", subtitle: saveBackupRoot.path,
+                         symbol: "folder.fill", kind: .action { [unowned self] in showSaveBackupFolder() }),
+                MenuItem(id: "changeFolder", title: "Change Backup Folder", symbol: "folder.badge.gearshape",
+                         kind: .action { [unowned self] in chooseSaveBackupFolder() }),
+                MenuItem(id: "delete", title: "Delete Save Data", subtitle: "Back up first if you may want it later.",
+                         symbol: "trash.fill", isDestructive: true,
+                         kind: .action { [unowned self] in confirmDeleteSave(save) }),
+            ]
+            return [MenuSection(
+                id: "save", title: "Save Data",
+                footnote: L10n.format(
+                    backups.count == 1 ? "%@ timestamped backup. The current save is backed up automatically before a restore."
+                        : "%@ timestamped backups. The current save is backed up automatically before a restore.",
+                    String(backups.count)
+                ),
+                items: items
+            )]
+        }
+    }
+
+    func backupSave(_ save: SaveData) {
+        let service = saveBackupService
+        showToast("Backing up \(saveTitle(save))…", symbol: "externaldrive.badge.plus")
+        Task {
+            do {
+                let backup = try await Task.detached(priority: .utility) { try service.backup(save) }.value
+                showToast("Save data backed up · \(ByteFormatter.string(backup.size)).", symbol: "checkmark.circle.fill")
+            } catch {
+                sound.play(.error)
+                showToast("Couldn't back up the save data. \(error.localizedDescription)", symbol: "exclamationmark.triangle.fill")
+            }
+        }
+    }
+
+    func backupAllSaves() {
+        let saves = storage.saves
+        guard !saves.isEmpty else {
+            showToast("No save data to back up.")
+            return
+        }
+        let service = saveBackupService
+        showToast("Backing up \(saves.count) saves…", symbol: "externaldrive.badge.plus")
+        Task {
+            let result = await Task.detached(priority: .utility) { () -> (Int, String?) in
+                var count = 0
+                for save in saves {
+                    do {
+                        try service.backup(save)
+                        count += 1
+                    } catch {
+                        return (count, error.localizedDescription)
+                    }
+                }
+                return (count, nil)
+            }.value
+            if let error = result.1 {
+                sound.play(.error)
+                showToast("Backed up \(result.0) of \(saves.count). \(error)", symbol: "exclamationmark.triangle.fill")
+            } else {
+                showToast("Backed up \(result.0) saves.", symbol: "checkmark.circle.fill")
+            }
+        }
+    }
+
+    func confirmRestore(_ backup: SaveBackup, save: SaveData) {
+        if let game = library.games.first(where: { $0.titleID?.uppercased() == save.titleID }),
+           launcher.runningGameID == game.id {
+            sound.play(.error)
+            showToast("Close \(game.title) before restoring its save.", symbol: "exclamationmark.triangle.fill")
+            return
+        }
+        confirm(
+            message: "Restore the latest save backup?",
+            detail: "The current save is backed up first, then replaced with the snapshot from \(PlayTimeFormatter.relative(backup.createdAt)).",
+            confirmTitle: "Restore"
+        ) { [unowned self] in
+            let service = saveBackupService
+            Task {
+                do {
+                    try await Task.detached(priority: .utility) { try service.restore(backup, to: save.url) }.value
+                    storage.measureSaves()
+                    library.games.filter { $0.titleID?.uppercased() == save.titleID }.forEach(storage.remeasure)
+                    showToast("Save data restored.", symbol: "clock.arrow.circlepath")
+                } catch {
+                    sound.play(.error)
+                    showToast("Couldn't restore the save data. \(error.localizedDescription)", symbol: "exclamationmark.triangle.fill")
+                }
+            }
+        }
+    }
+
+    func showSaveBackupFolder() {
+        do {
+            try FileManager.default.createDirectory(at: saveBackupRoot, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(saveBackupRoot)
+        } catch {
+            sound.play(.error)
+            showToast("Couldn't open the backup folder.", symbol: "exclamationmark.triangle.fill")
+        }
+    }
+
+    func chooseSaveBackupFolder() {
+        let panel = NSOpenPanel()
+        panel.title = L10n.text("Choose Save Backup Folder")
+        panel.prompt = L10n.text("Choose")
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = saveBackupRoot
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        settings.value.saveBackupFolder = url.path
+        showToast("Save backups will be stored in \(url.lastPathComponent).", symbol: "folder.fill")
     }
 
     private func softwareRemoved(_ game: Game, message: String) {
