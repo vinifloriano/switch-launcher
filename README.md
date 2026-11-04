@@ -16,9 +16,9 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 
 [Watch the two-minute demo in 720p](Demo.mp4) (H.264/AAC, about 68 MB).
 
-| System Settings | Controllers | Test Input Devices |
-|---|---|---|
-| ![System Settings](docs/screenshots/settings.png) | ![Controllers](docs/screenshots/controllers.png) | ![Test Input Devices](docs/screenshots/tester.png) |
+| System Settings | Test Input Devices |
+|---|---|
+| ![System Settings](docs/screenshots/settings.png) | ![Test Input Devices](docs/screenshots/tester.png) |
 
 ## Features
 
@@ -35,6 +35,8 @@ software row, and starts them full screen on top of the launcher. HOME brings yo
 - **Game Store**: browse and install games from your own S3-compatible server (an S3 gateway
   over a NAS folder on the homelab), over the home network or a Cloudflare tunnel, with resumable downloads and checksum
   verification. See [docs/STORE.md](docs/STORE.md).
+- **Local save data**: deleting software does not delete its save data. Download the game again
+  from your Game Store and continue from the same local save.
 - **Controllers**: player slots with lights and battery, Change Grip/Order (L + R), Find
   Controllers (vibration), Test Input Devices (live buttons, sticks with movement trails, analog
   triggers) and pairing.
