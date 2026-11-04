@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.8.0 — 2026-11-04
+
+- **Controller scrolling & margins:** Fixed issues where rapid stick/d-pad navigation caused tiles
+  or settings sections to stop partially off-screen. Replaced overlapping scroll animations with an
+  adaptive scroll follower that keeps clean edge margins on both the HOME row and System Settings tabs/lists.
+- **Controller HOME / Xbox button return:** Returning to the launcher while playing a game now hides
+  the game process so macOS reliably brings the launcher forward even from full-screen. Resuming a
+  running game from the HOME menu correctly restores and focuses the game window.
+
 ## 1.7.0 — 2026-11-04
 
 - **Faster with a controller.** System Settings built every page's rows on each press, reading
