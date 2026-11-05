@@ -222,8 +222,8 @@ extension AppModel {
             id: "notifications", title: "Notifications", symbol: "bell.badge.fill",
             footnote: "Messages shown at the top of the screen.",
             items: [
-                self.toggleItem("notifyUpdates", "Launcher Updates", \.notifyUpdates,
-                           subtitle: "When a new version of Switch Launcher is available."),
+                self.toggleItem("notifyUpdates", "Software Updates", \.notifyUpdates,
+                           subtitle: "When launcher or installed game updates are available."),
                 self.toggleItem("notifyDownloads", "Downloads", \.notifyDownloads,
                            subtitle: "When software from the Game Store is ready to play."),
                 self.toggleItem("notifyPlayTime", "Play Time", \.notifyPlayTime,

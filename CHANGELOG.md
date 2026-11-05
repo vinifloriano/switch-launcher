@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.11.0 — 2026-11-04
+
+- **Game updates:** the launcher checks the Game Store catalog at startup and every six hours,
+  notifies once for each new game version, and badges the Game Store with the available update
+  count. Updates resume interrupted downloads, verify their checksum and identity, replace the
+  exact installed copy on its current drive, and roll back to the previous app if installation
+  fails. The publisher keeps only the latest archive after atomically switching the catalog.
+- **HOME button compatibility:** controller HOME now returns to Switch Launcher from older
+  nxnative builds too. The launcher loads a small compatibility shim into a game it starts, making
+  the foreground host release HOME from macOS's system gesture exactly as current nxnative does;
+  the Games-app activation path remains as a second fallback. Existing game apps do not need to be
+  rebuilt.
+
+## Unreleased
+
 ## 1.10.2 — 2026-11-04
 
 - **macOS 15 CI compatibility:** transfer fully-decoded, immutable image results through an

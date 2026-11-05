@@ -87,6 +87,82 @@ final class LibraryOrderingTests: XCTestCase {
     }
 }
 
+final class StoreCatalogUpdateTests: XCTestCase {
+    private func installed(_ id: String, version: String?) -> Game {
+        Game(id: id, title: id, url: URL(fileURLWithPath: "/\(id).app"), version: version)
+    }
+
+    private func catalogGame(_ id: String, version: String?) -> StoreGame {
+        StoreGame(id: id, title: id, version: version, appName: "\(id).app", archive: "\(id).aar",
+                  archiveSize: 1, sha256: "hash")
+    }
+
+    func testFindsOnlyNewerInstalledGames() {
+        let catalog = StoreCatalog(games: [
+            catalogGame("newer", version: "1.10.0"),
+            catalogGame("same", version: "2.0"),
+            catalogGame("older", version: "3.9"),
+            catalogGame("not-installed", version: "1.0"),
+        ])
+        let games = [
+            installed("newer", version: "1.9.2"),
+            installed("same", version: "2.0.0"),
+            installed("older", version: "4.0"),
+        ]
+
+        XCTAssertEqual(catalog.availableUpdates(for: games).map(\.id), ["newer"])
+    }
+
+    func testMissingVersionsAreNotGuessed() {
+        let catalog = StoreCatalog(games: [catalogGame("game", version: "2.0")])
+        XCTAssertTrue(catalog.availableUpdates(for: [installed("game", version: nil)]).isEmpty)
+        XCTAssertTrue(StoreCatalog(games: [catalogGame("game", version: nil)])
+            .availableUpdates(for: [installed("game", version: "1.0")]).isEmpty)
+    }
+
+    func testSameVersionCorrectedArchiveUsesInstallReceipt() {
+        let catalog = StoreCatalog(games: [catalogGame("game", version: "2.0")])
+        let game = installed("game", version: "2.0")
+
+        XCTAssertTrue(catalog.availableUpdates(for: [game], installedArchives: ["game": "old-hash"])
+            .contains { $0.id == "game" })
+        XCTAssertTrue(catalog.availableUpdates(for: [game], installedArchives: ["game": "hash"]).isEmpty)
+        XCTAssertTrue(catalog.availableUpdates(for: [game]).isEmpty,
+                      "pre-store installs must not all be treated as stale")
+    }
+}
+
+@MainActor
+final class GameLauncherTests: XCTestCase {
+    private let session = GameLauncher.Session(
+        gameID: "game", pid: 100, started: Date(timeIntervalSince1970: 0), windowPID: 200
+    )
+
+    func testGamesAppAfterGameWindowIsLegacyHomeGesture() {
+        XCTAssertTrue(GameLauncher.isSystemHomeGesture(
+            activatedBundleIdentifier: "com.apple.games", previousActivePID: 200, session: session
+        ))
+    }
+
+    func testGamesAppAfterLauncherProcessIsLegacyHomeGesture() {
+        XCTAssertTrue(GameLauncher.isSystemHomeGesture(
+            activatedBundleIdentifier: "com.apple.games", previousActivePID: 100, session: session
+        ))
+    }
+
+    func testUnrelatedActivationIsNotLegacyHomeGesture() {
+        XCTAssertFalse(GameLauncher.isSystemHomeGesture(
+            activatedBundleIdentifier: "com.apple.games", previousActivePID: 300, session: session
+        ))
+        XCTAssertFalse(GameLauncher.isSystemHomeGesture(
+            activatedBundleIdentifier: "com.apple.Safari", previousActivePID: 200, session: session
+        ))
+        XCTAssertFalse(GameLauncher.isSystemHomeGesture(
+            activatedBundleIdentifier: "com.apple.games", previousActivePID: 200, session: nil
+        ))
+    }
+}
+
 final class PersistenceTests: XCTestCase {
     private var folder: URL!
 

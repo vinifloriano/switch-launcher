@@ -21,6 +21,7 @@ public final class StoreModel: InputResponder {
     var index = 0
     /// Presigned icon URLs, made once per catalog so `AsyncImage` doesn't reload on every redraw.
     private(set) var iconURLs: [String: URL] = [:]
+    @ObservationIgnored private var selectedInitialUpdate = false
     @ObservationIgnored unowned let app: AppModel
 
     init(app: AppModel) {
@@ -43,7 +44,14 @@ public final class StoreModel: InputResponder {
             if let key = game.icon, let url = store.url(for: key, expires: 24 * 3600) { urls[game.id] = url }
         }
         iconURLs = urls
-        index = min(index, max(games.count - 1, 0))
+        app.syncGameUpdates()
+        if !selectedInitialUpdate,
+           let update = games.firstIndex(where: { status(of: $0) == .update }) {
+            index = update
+            selectedInitialUpdate = true
+        } else {
+            index = min(index, max(games.count - 1, 0))
+        }
     }
 
     func status(of game: StoreGame) -> Status {
@@ -55,8 +63,7 @@ public final class StoreModel: InputResponder {
             }
         }
         guard let installed = app.library.game(id: game.id) else { return .available }
-        if let latest = game.version, let current = installed.version,
-           current.compare(latest, options: .numeric) == .orderedAscending {
+        if app.availableGameUpdates.contains(where: { $0.id == installed.id }) {
             return .update
         }
         return .installed
@@ -108,7 +115,7 @@ public final class StoreModel: InputResponder {
             if let installed = app.library.game(id: game.id) { app.launch(installed) }
         case .failed:
             store.clearFailure(game.id)
-            confirmDownload(game, update: false)
+            confirmDownload(game, update: app.availableGameUpdates.contains { $0.id == game.id })
         case .available:
             confirmDownload(game, update: false)
         case .update:
@@ -117,7 +124,15 @@ public final class StoreModel: InputResponder {
     }
 
     private func confirmDownload(_ game: StoreGame, update: Bool) {
-        let folder = app.storeInstallFolder
+        if update, app.launcher.runningGameID == game.id {
+            app.sound.play(.error)
+            app.showToast("Close \(game.title) before updating it.", symbol: "xmark.circle.fill")
+            return
+        }
+        let installed = update ? app.library.game(id: game.id) : nil
+        // An update belongs beside the installed copy, even when that copy is on a different
+        // drive from the default download folder.
+        let folder = installed?.url.deletingLastPathComponent() ?? app.storeInstallFolder
         let needed = game.archiveSize + (game.installedSize ?? game.archiveSize)
         if let free = Self.freeSpace(at: folder), free < needed {
             app.sound.play(.error)
@@ -128,12 +143,12 @@ public final class StoreModel: InputResponder {
         let size = ByteFormatter.string(game.archiveSize)
         app.confirm(
             message: update ? "Update \(game.title)?" : "Download \(game.title)?",
-            detail: "\(size) download · installs to \(folder.path)"
+            detail: "\(size) download · \(update ? "replaces" : "installs to") \(installed?.url.path ?? folder.path)"
                 + (app.storage.hasSaveData(titleID: game.titleID) ? "\nYour save data on this Mac will be used." : ""),
             confirmTitle: update ? "Update" : "Download"
         ) { [weak self] in
             guard let self else { return }
-            store.download(game, into: folder)
+            store.download(game, into: folder, replacing: installed?.url)
         }
     }
 

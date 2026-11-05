@@ -116,7 +116,7 @@ public final class UpdateChecker {
     }
 
     /// Compares dotted versions numerically: 1.10.0 is newer than 1.9.2.
-    nonisolated static func isNewer(_ candidate: String, than current: String) -> Bool {
+    public nonisolated static func isNewer(_ candidate: String, than current: String) -> Bool {
         func parts(_ version: String) -> [Int] {
             version.split(separator: ".").map { Int($0.prefix { $0.isNumber }) ?? 0 }
         }

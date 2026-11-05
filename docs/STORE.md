@@ -6,7 +6,7 @@ S3-compatible bucket and installs them on this Mac.
 ```
 store-publish ──(SMB)──▶ NAS folder = bucket `switch-games` ◀──(S3 gateway: LAN or Cloudflare tunnel)── Game Store
   aa archive                   catalog.json                                       download → SHA-256 → aa extract
-                               games/<slug>/<slug>-<version>.aar
+                               games/<slug>/<release>.aar
                                games/<slug>/icon.png
 ```
 
@@ -53,6 +53,13 @@ never serves a half-written game. Writing to the NAS over SMB ran at 80–110 MB
 directly. Games already in the store at the same version are skipped (use `--force` to re-upload),
 so an interrupted run can simply be started again. `--jobs` uploads several games at once; their
 catalog updates are written one after another, so none are lost.
+
+Set and increment `CFBundleShortVersionString` in every app release. The launcher compares that
+catalog version with the installed bundle to decide whether an update exists. A publish uploads the
+new versioned object first, atomically updates `catalog.json`, and then removes the former archive;
+clients always see a complete release and the bucket retains only the latest version.
+When `--force` republishes a corrected build at the same version, launchers that installed the
+previous archive detect its changed checksum from their local install receipt.
 
 `--remove ID` takes a game out of the store with its archive, for example when a port is replaced
 by one with another bundle id (`--remove org.macnativegames.botw`). It can run on its own or with
@@ -102,8 +109,12 @@ third try it looks for the store again, so a download started at home carries on
 remote address. The partial file is kept after a failure or quitting the launcher, and starting
 the download again continues it (a new version of the game starts afresh; Stop throws it away).
 Finished downloads are checked against the catalog's SHA-256, extracted with `aa extract` and moved
-into the install folder (System Settings › Internet › Install Downloads To). An older copy of the
-app goes to the Trash.
+into the install folder (System Settings › Internet › Install Downloads To). The catalog is checked
+at startup and every six hours. Newer versions produce one notification and a count badge on Game
+Store. Updating downloads beside the current app—even if it is on another drive—checks the bundle
+identifier and version, stages the prior copy, and restores it if placing the update fails. After a
+successful replacement, the prior app goes to the Trash. Save data is stored separately and is not
+changed.
 
 ## Testing without a server
 

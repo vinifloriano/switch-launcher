@@ -13,6 +13,13 @@ import Observation
 /// continues where it stopped.
 @MainActor @Observable
 public final class StoreService {
+    private struct PendingDownload {
+        let game: StoreGame
+        let folder: URL
+        /// The installed app this download updates. `nil` for a new installation.
+        let replacing: URL?
+    }
+
     public enum State: Equatable {
         case notConfigured
         case loading
@@ -49,7 +56,7 @@ public final class StoreService {
     @ObservationIgnored private var delegate: DownloadDelegate!
     @ObservationIgnored private var session: URLSession!
     @ObservationIgnored private var tasks: [String: URLSessionDataTask] = [:]
-    @ObservationIgnored private var pending: [String: (StoreGame, URL)] = [:]
+    @ObservationIgnored private var pending: [String: PendingDownload] = [:]
     @ObservationIgnored private var attempts: [String: Int] = [:]
     /// When each download last received data.
     @ObservationIgnored private var lastProgress: [String: Date] = [:]
@@ -144,7 +151,7 @@ public final class StoreService {
         ((try? FileManager.default.attributesOfItem(atPath: url.path))?[.size] as? NSNumber)?.int64Value ?? 0
     }
 
-    public func download(_ game: StoreGame, into folder: URL) {
+    public func download(_ game: StoreGame, into folder: URL, replacing: URL? = nil) {
         guard !(jobs[game.id]?.isActive ?? false) else { return }
         let partial = Self.partialURL(for: game, in: folder)
         let info = Self.partialInfoURL(for: game, in: folder)
@@ -163,7 +170,7 @@ public final class StoreService {
         let offset = Self.fileSize(partial)
         attempts[game.id] = 0
         lastProgress[game.id] = Date()
-        pending[game.id] = (game, folder)
+        pending[game.id] = PendingDownload(game: game, folder: folder, replacing: replacing)
         jobs[game.id] = .downloading(received: offset, total: game.archiveSize)
         Log.store.info("Downloading \(game.title, privacy: .public)\(offset > 0 ? " from byte \(offset)" : "", privacy: .public)")
         startTask(game, into: folder)
@@ -193,9 +200,9 @@ public final class StoreService {
         let task = tasks.removeValue(forKey: id)
         task?.cancel()
         // A stopped download is thrown away; one that failed keeps its partial file to continue later.
-        if let (game, folder) = pending[id] {
-            try? FileManager.default.removeItem(at: Self.partialURL(for: game, in: folder))
-            try? FileManager.default.removeItem(at: Self.partialInfoURL(for: game, in: folder))
+        if let pending = pending[id] {
+            try? FileManager.default.removeItem(at: Self.partialURL(for: pending.game, in: pending.folder))
+            try? FileManager.default.removeItem(at: Self.partialInfoURL(for: pending.game, in: pending.folder))
         }
         pending[id] = nil
         attempts[id] = nil
@@ -208,7 +215,7 @@ public final class StoreService {
     }
 
     fileprivate func progress(_ id: String, received: Int64) {
-        guard let (game, _) = pending[id], tasks[id] != nil else { return }
+        guard let game = pending[id]?.game, tasks[id] != nil else { return }
         lastProgress[id] = Date()
         attempts[id] = 0
         jobs[id] = .downloading(received: received, total: game.archiveSize)
@@ -223,7 +230,9 @@ public final class StoreService {
     fileprivate func taskEnded(_ id: String, _ end: TaskEnd) {
         tasks[id] = nil
         // Stopped by the user.
-        guard let (game, folder) = pending[id] else { return }
+        guard let pending = pending[id] else { return }
+        let game = pending.game
+        let folder = pending.folder
         let partial = Self.partialURL(for: game, in: folder)
         let size = Self.fileSize(partial)
         switch end {
@@ -284,7 +293,8 @@ public final class StoreService {
         }
         lastProgress[game.id] = nil
         jobs[game.id] = .verifying
-        Task { await install(game, archive: archive, folder: folder, staging: staging) }
+        let replacing = pending[game.id]?.replacing
+        Task { await install(game, archive: archive, folder: folder, staging: staging, replacing: replacing) }
     }
 
     private func fail(_ id: String, _ message: String) {
@@ -296,7 +306,7 @@ public final class StoreService {
         lastProgress[id] = nil
     }
 
-    private func install(_ game: StoreGame, archive: URL, folder: URL, staging: URL) async {
+    private func install(_ game: StoreGame, archive: URL, folder: URL, staging: URL, replacing: URL?) async {
         let expected = game.sha256.lowercased()
         let actual = await Task.detached(priority: .utility) { Self.sha256(of: archive) }.value
         guard actual == expected else {
@@ -308,7 +318,7 @@ public final class StoreService {
         jobs[game.id] = .installing
         let work = staging.appendingPathComponent(Self.safeName(game.id), isDirectory: true)
         let extracted = work.appendingPathComponent(game.appName, isDirectory: true)
-        let destination = folder.appendingPathComponent(game.appName, isDirectory: true)
+        let destination = replacing ?? folder.appendingPathComponent(game.appName, isDirectory: true)
         let result: String? = await Task.detached(priority: .utility) {
             let fm = FileManager.default
             try? fm.removeItem(at: work)
@@ -340,15 +350,52 @@ public final class StoreService {
             return
         }
 
-        // An existing copy goes to the Trash, so nothing is lost if the new one misbehaves.
-        if FileManager.default.fileExists(atPath: destination.path) {
-            _ = try? await NSWorkspace.shared.recycle([destination])
+        // Never replace a working app with an archive for the wrong title or version.
+        let plist = extracted.appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOf: plist) as? [String: Any],
+              info["CFBundleIdentifier"] as? String == game.id else {
+            try? FileManager.default.removeItem(at: work)
+            try? FileManager.default.removeItem(at: archive)
+            fail(game.id, "The update doesn't match this game.")
+            return
         }
+        if let expectedVersion = game.version,
+           info["CFBundleShortVersionString"] as? String != expectedVersion {
+            try? FileManager.default.removeItem(at: work)
+            try? FileManager.default.removeItem(at: archive)
+            fail(game.id, "The update has the wrong version.")
+            return
+        }
+
+        // Stage the old copy on the same disk, place the update, and restore the old copy if that
+        // final move fails. Only after the new app is safely in place does the old one go to Trash.
+        let backup = work.appendingPathComponent("Previous \(destination.lastPathComponent)", isDirectory: true)
+        var backedUp = false
         do {
+            if FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.moveItem(at: destination, to: backup)
+                backedUp = true
+            }
             try FileManager.default.moveItem(at: extracted, to: destination)
         } catch {
-            fail(game.id, "Couldn't install: \(error.localizedDescription)")
+            var message = "Couldn't install: \(error.localizedDescription)"
+            if backedUp && !FileManager.default.fileExists(atPath: destination.path) {
+                do {
+                    try FileManager.default.moveItem(at: backup, to: destination)
+                } catch {
+                    message += " The previous version is still at \(backup.path)."
+                }
+            }
+            try? FileManager.default.removeItem(at: archive)
+            fail(game.id, message)
             return
+        }
+        if backedUp {
+            do {
+                _ = try await NSWorkspace.shared.recycle([backup])
+            } catch {
+                Log.store.error("Couldn't move the previous version to Trash: \(error.localizedDescription, privacy: .public)")
+            }
         }
         try? FileManager.default.removeItem(at: work)
         try? FileManager.default.removeItem(at: archive)

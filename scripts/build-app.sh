@@ -39,6 +39,7 @@ APP="build/Switch Launcher.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN/SwitchLauncher" "$APP/Contents/MacOS/"
+cp "$BIN/libHomeButtonShim.dylib" "$APP/Contents/Resources/"
 cp Resources/Info.plist "$APP/Contents/"
 for localization in Resources/*.lproj; do
     cp -R "$localization" "$APP/Contents/Resources/"
@@ -61,10 +62,12 @@ iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
 
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
     # Developer ID: hardened runtime and a secure timestamp, both required for notarization.
+    codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP/Contents/Resources/libHomeButtonShim.dylib"
     codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
 else
     # Ad-hoc signature, but with a designated requirement on the bundle id only, so macOS privacy
     # answers (e.g. access to Documents) are kept across rebuilds instead of being asked again.
+    codesign --force --sign - "$APP/Contents/Resources/libHomeButtonShim.dylib"
     codesign --force --sign - --requirements '=designated => identifier "dev.vinicius.switchlauncher"' "$APP"
 fi
 codesign --verify --deep --strict --verbose=2 "$APP"

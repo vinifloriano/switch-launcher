@@ -11,6 +11,22 @@ public struct StoreCatalog: Codable, Equatable, Sendable {
         self.updated = updated
         self.games = games
     }
+
+    /// Catalog entries newer than the matching installed apps. A missing version cannot be
+    /// compared safely, so publishers should always set `CFBundleShortVersionString`.
+    public func availableUpdates(for installed: [Game], installedArchives: [String: String] = [:]) -> [StoreGame] {
+        let versions = Dictionary(uniqueKeysWithValues: installed.compactMap { game in
+            game.version.map { (game.id, $0) }
+        })
+        return games.filter { game in
+            guard let latest = game.version, let current = versions[game.id] else { return false }
+            if UpdateChecker.isNewer(latest, than: current) { return true }
+            if UpdateChecker.isNewer(current, than: latest) { return false }
+            // A forced republish can correct a build without changing its public version. Once a
+            // game has been installed by this store, its archive receipt makes that change visible.
+            return installedArchives[game.id].map { $0 != game.sha256 } ?? false
+        }
+    }
 }
 
 public struct StoreGame: Codable, Equatable, Identifiable, Sendable {
@@ -47,6 +63,11 @@ public struct StoreGame: Codable, Equatable, Identifiable, Sendable {
         self.installedSize = installedSize
         self.sha256 = sha256
         self.icon = icon
+    }
+
+    /// Changes for a new version and for a corrected same-version archive.
+    public var releaseIdentifier: String {
+        "\(version ?? ""):\(sha256)"
     }
 }
 

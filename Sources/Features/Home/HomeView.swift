@@ -198,6 +198,17 @@ struct HomeView: View {
             ForEach(Array(DockItem.allCases.enumerated()), id: \.element.id) { index, item in
                 let isSelected = home.row == .dock && home.dockIndex == index
                 CircleIconButton(symbol: item.symbol, tint: item.tint, diameter: ui(66), isSelected: isSelected)
+                    .overlay(alignment: .topTrailing) {
+                        if item == .eShop, !app.availableGameUpdates.isEmpty {
+                            Text("\(app.availableGameUpdates.count)")
+                                .font(ui.font(12, .bold))
+                                .foregroundStyle(.white)
+                                .frame(minWidth: ui(22), minHeight: ui(22))
+                                .background(Circle().fill(Color(hex: 0xE60012)))
+                                .overlay(Circle().strokeBorder(.white, lineWidth: ui(2)))
+                                .offset(x: ui(3), y: -ui(3))
+                        }
+                    }
                     .overlay(alignment: .top) {
                         Text(L10n.text(item.title))
                             .font(ui.font(17, .medium))

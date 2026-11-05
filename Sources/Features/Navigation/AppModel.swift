@@ -69,13 +69,21 @@ public final class AppModel {
     /// Set while the launch animation for this game is playing.
     public private(set) var launchingGame: Game?
     public private(set) var toast: ToastMessage?
+    /// Installed games whose catalog version is newer. Drives the HOME badge and Store status.
+    public private(set) var availableGameUpdates: [StoreGame] = []
     public var isBooting = false
     /// Whether the launcher window is in full screen (no title bar strip needed).
     public var isFullScreen = false
     @ObservationIgnored public private(set) var home: HomeModel!
     @ObservationIgnored private var started = false
     @ObservationIgnored private var updatesStarted = false
+    @ObservationIgnored private var gameUpdateTask: Task<Void, Never>?
+    @ObservationIgnored private var gameUpdateConfig = StoreConfig()
+    @ObservationIgnored private var libraryReady = false
     @ObservationIgnored private var gamesAppWatch: NSObjectProtocol?
+    /// A legacy host can let macOS consume HOME before GameController reports the release. Ignore
+    /// that delayed release after the Games-app activation has already returned us to the launcher.
+    @ObservationIgnored private var suppressHomeUntil = Date.distantPast
     /// When a button was last pressed (keyboard or controller).
     @ObservationIgnored private(set) var lastInput = Date()
     @ObservationIgnored private var lastActivationRequest = Date.distantPast
@@ -125,12 +133,19 @@ public final class AppModel {
         startAutoSleep()
 
         launcher.onSessionEnded = { [weak self] id, seconds in self?.sessionEnded(id, seconds: seconds) }
+        launcher.onSystemHomeGesture = { [weak self] in
+            guard let self, settings.value.homeButtonReturnsToLauncher else { return }
+            suppressHomeUntil = Date().addingTimeInterval(1)
+            returnFromGame()
+        }
         store.onInstalled = { [weak self] game, url in self?.storeInstalled(game, at: url) }
         Task {
             await reloadLibrary()
             openScreenFromLaunchArgument()
             captureFromLaunchArgument()
             benchmarkFromLaunchArgument()
+            libraryReady = true
+            configureGameUpdateChecks()
         }
     }
 
@@ -195,6 +210,8 @@ public final class AppModel {
     }
 
     private func applySettings(_ value: LauncherSettings) {
+        let storeConfigChanged = value.store != gameUpdateConfig
+        gameUpdateConfig = value.store
         sound.isEnabled = value.soundsEnabled
         sound.volume = Float(value.soundVolume)
         input.useNintendoLayout = value.nintendoButtonLayout
@@ -209,6 +226,7 @@ public final class AppModel {
             updatesStarted = false
             updates.stopChecking()
         }
+        configureGameUpdateChecks(restart: storeConfigChanged)
     }
 
     public func theme(systemIsDark: Bool) -> Theme {
@@ -226,6 +244,7 @@ public final class AppModel {
         storage.remember(library.games)
         launcher.adoptRunning(from: library.games)
         IconCache.shared.load(homeGames + library.games)
+        syncGameUpdates()
     }
 
     /// Software on the HOME Menu: loaded virtual game cards, most recent first, up to 12.
@@ -255,6 +274,10 @@ public final class AppModel {
             return
         }
         if button == .home {
+            if Date() < suppressHomeUntil {
+                suppressHomeUntil = .distantPast
+                return
+            }
             keepGamesAppAway()
             quickSettings = nil
             goHome()
@@ -416,7 +439,13 @@ public final class AppModel {
         Task {
             do {
                 // The ports' host reads DM_FULLSCREEN and opens its window in full screen.
-                let environment = settings.value.playInFullScreen ? ["DM_FULLSCREEN": "1"] : [:]
+                var environment = settings.value.playInFullScreen ? ["DM_FULLSCREEN": "1"] : [:]
+                if settings.value.homeButtonReturnsToLauncher,
+                   let shim = Bundle.main.url(forResource: "libHomeButtonShim", withExtension: "dylib") {
+                    // Old hosts leave HOME bound to macOS. The foreground app's preference wins,
+                    // so load the compatibility request into that process and its dmhost child.
+                    environment["DYLD_INSERT_LIBRARIES"] = shim.path
+                }
                 let started = try await launcher.launch(game, environment: environment)
                 if started { history.markLaunched(game.id) }
                 hideOnceGameIsInFront()
@@ -459,6 +488,7 @@ public final class AppModel {
     }
 
     private func storeInstalled(_ game: StoreGame, at url: URL) {
+        settings.value.installedStoreArchives[game.id] = game.sha256
         let folder = url.deletingLastPathComponent().path
         if !settings.value.libraryFolders.contains(folder) {
             settings.value.libraryFolders.append(folder)
@@ -551,6 +581,72 @@ public final class AppModel {
     }
 
     // MARK: Updates
+
+    /// Recomputes game update state from the catalog already in memory.
+    func syncGameUpdates() {
+        availableGameUpdates = store.catalog.availableUpdates(
+            for: library.games,
+            installedArchives: settings.value.installedStoreArchives
+        )
+    }
+
+    /// Uses the same automatic-update preference as launcher releases. The catalog is small and
+    /// checked immediately, then every six hours.
+    private func configureGameUpdateChecks(restart: Bool = false) {
+        guard libraryReady, settings.value.checkForUpdates else {
+            gameUpdateTask?.cancel()
+            gameUpdateTask = nil
+            return
+        }
+        if restart {
+            gameUpdateTask?.cancel()
+            gameUpdateTask = nil
+        }
+        guard gameUpdateTask == nil else { return }
+        gameUpdateTask = Task { [weak self] in
+            while !Task.isCancelled {
+                await self?.checkGameUpdates()
+                try? await Task.sleep(for: .seconds(6 * 3600))
+            }
+        }
+    }
+
+    private func checkGameUpdates() async {
+        guard settings.value.store.isConfigured else {
+            availableGameUpdates = []
+            return
+        }
+        await store.refresh()
+        guard store.state == .ready else { return }
+        syncGameUpdates()
+        announceGameUpdates()
+    }
+
+    private func announceGameUpdates() {
+        guard settings.value.notifyUpdates else { return }
+        let newUpdates = availableGameUpdates.filter { game in
+            settings.value.announcedGameUpdates[game.id] != game.releaseIdentifier
+        }
+        guard !newUpdates.isEmpty else { return }
+
+        var announced = settings.value.announcedGameUpdates
+        for game in newUpdates {
+            announced[game.id] = game.releaseIdentifier
+        }
+        settings.value.announcedGameUpdates = announced
+
+        // Don't hide this behind the boot animation or put it over a running game.
+        Task { [weak self] in
+            guard let self else { return }
+            while isBooting || launcher.session != nil {
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            let message = newUpdates.count == 1
+                ? "An update is available for \(newUpdates[0].title). Open Game Store to download it."
+                : "\(newUpdates.count) game updates are available. Open Game Store to download them."
+            showToast(message, symbol: "arrow.down.circle.fill")
+        }
+    }
 
     private func announceUpdate(_ release: AppRelease) {
         guard settings.value.notifyUpdates else { return }

@@ -20,11 +20,16 @@ public final class GameLauncher {
 
     public private(set) var session: Session?
     @ObservationIgnored public var onSessionEnded: ((_ gameID: String, _ seconds: TimeInterval) -> Void)?
+    /// Older game hosts leave the controller HOME button bound to macOS. In that case macOS
+    /// activates the Games app instead of delivering HOME to the launcher; this reports that
+    /// system handoff so the launcher can still return to its HOME Menu.
+    @ObservationIgnored public var onSystemHomeGesture: (() -> Void)?
     /// Take focus back for the game when a background app grabs it (see `guardFocus`).
     @ObservationIgnored public var keepGameInFront = true
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var games: [String: Game] = [:]
     @ObservationIgnored private var focusWatchdog: Task<Void, Never>?
+    @ObservationIgnored private var activePID = NSWorkspace.shared.frontmostApplication?.processIdentifier
 
     public init() {
         let center = NSWorkspace.shared.notificationCenter
@@ -41,8 +46,8 @@ public final class GameLauncher {
             object: nil,
             queue: .main
         ) { [weak self] note in
-            let pid = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.processIdentifier
-            MainActor.assumeIsolated { self?.guardFocus(activatedPID: pid) }
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            MainActor.assumeIsolated { self?.applicationActivated(app) }
         })
     }
 
@@ -137,6 +142,32 @@ public final class GameLauncher {
     }
 
     // MARK: Focus
+
+    private func applicationActivated(_ app: NSRunningApplication?) {
+        let previousPID = activePID
+        activePID = app?.processIdentifier
+        if Self.isSystemHomeGesture(
+            activatedBundleIdentifier: app?.bundleIdentifier,
+            previousActivePID: previousPID,
+            session: session
+        ) {
+            Log.launcher.notice("macOS handled HOME through the Games app; returning to the launcher")
+            onSystemHomeGesture?()
+        }
+        guardFocus(activatedPID: app?.processIdentifier)
+    }
+
+    /// A compatibility path for nxnative hosts built before they disabled macOS's HOME gesture.
+    /// Requiring the running game's process to have been active keeps an ordinary launch of the
+    /// Games app from being mistaken for a controller HOME press.
+    static func isSystemHomeGesture(
+        activatedBundleIdentifier: String?,
+        previousActivePID: pid_t?,
+        session: Session?
+    ) -> Bool {
+        guard activatedBundleIdentifier == "com.apple.games", let session else { return false }
+        return previousActivePID == session.windowPID || previousActivePID == session.pid
+    }
 
     /// Waits for the game window process to show up, then gives it focus. Stops once the game is
     /// in front, after 30 s, or if the game ends.

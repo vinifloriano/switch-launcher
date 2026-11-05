@@ -43,6 +43,11 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
     public var bluetoothBeforeAirplane = true
     /// Messages the launcher shows.
     public var notifyUpdates = true
+    /// SHA-256 receipt of the store archive currently installed for each game.
+    public var installedStoreArchives: [String: String] = [:]
+    /// Last catalog release announced for each game. This prevents the same update notification
+    /// on every launch while allowing a newer release to be announced normally.
+    public var announcedGameUpdates: [String: String] = [:]
     public var notifyDownloads = true
     public var notifyPlayTime = true
     /// Minutes without input on the HOME Menu before Sleep Mode; 0 never.
@@ -106,6 +111,8 @@ public struct LauncherSettings: Codable, Equatable, Sendable {
         wifiBeforeAirplane = value(.wifiBeforeAirplane, d.wifiBeforeAirplane)
         bluetoothBeforeAirplane = value(.bluetoothBeforeAirplane, d.bluetoothBeforeAirplane)
         notifyUpdates = value(.notifyUpdates, d.notifyUpdates)
+        installedStoreArchives = value(.installedStoreArchives, d.installedStoreArchives)
+        announcedGameUpdates = value(.announcedGameUpdates, d.announcedGameUpdates)
         notifyDownloads = value(.notifyDownloads, d.notifyDownloads)
         notifyPlayTime = value(.notifyPlayTime, d.notifyPlayTime)
         autoSleepMinutes = value(.autoSleepMinutes, d.autoSleepMinutes)

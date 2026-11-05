@@ -204,7 +204,7 @@ extension AppModel {
                          symbol: self.updates.availableRelease == nil ? "arrow.clockwise.circle.fill" : "arrow.down.circle.fill",
                          kind: .action { [unowned self] in openSoftwareUpdate() }),
                 self.toggle("autoUpdate", "Check for Updates Automatically", \.checkForUpdates,
-                       subtitle: "Looks for a new release on GitHub at startup and every 6 hours."),
+                       subtitle: "Checks launcher releases and the Game Store catalog every 6 hours."),
                 MenuItem(id: "software", title: "Installed Software", kind: .info("\(self.library.games.count)")),
                 MenuItem(id: "data", title: "Data Folder", subtitle: AppPaths.supportDirectory.path, symbol: "folder",
                          kind: .action { NSWorkspace.shared.open(AppPaths.supportDirectory) }),

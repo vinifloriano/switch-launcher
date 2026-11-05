@@ -169,9 +169,12 @@ swift run -c release store-publish --to "/Volumes/switch-store/switch-games" ~/D
 swift run -c release store-publish --to "/Volumes/switch-store/switch-games" --scan ~/Documents/Switch/apps
 ```
 
-Each game is packed into one archive, written next to `catalog.json` with its icon, size and
-checksum. Games already in the store at the same version are skipped, so a stopped run can just be
-started again. `--remove <bundle id>` takes a game out. More options: [STORE.md](STORE.md).
+Each game is packed into one archive, written next to `catalog.json` with its version, icon, size
+and checksum. Publishing a newer version switches the catalog first and then removes the previous
+archive, so only the latest release is retained without leaving clients a broken link. Games at the
+same version are skipped; increment `CFBundleShortVersionString` for every release (or use `--force`
+to republish a corrected build). `--remove <bundle id>` takes a game out. More options:
+[STORE.md](STORE.md).
 
 ### 4. Connect the launcher
 
@@ -188,6 +191,12 @@ Sign In).
 Choose **Test Connection**: it should say how many games it found. Then open the Game Store and
 press A on a game. Downloads install into the folder set in **Install Downloads To**
 (`~/Documents/Switch/apps` by default), and the game appears on the HOME Menu when it's done.
+
+The launcher checks `catalog.json` at startup and every six hours. When a catalog version is newer
+than an installed game's version, the HOME Menu shows a badge on Game Store and sends one update
+notification. Open Game Store and press A on the update: it downloads with resume and checksum
+verification, replaces the copy on its current drive, and restores the previous app if installation
+cannot finish. Save data is outside the app and is not changed.
 
 Give the NAS a fixed IP address (a DHCP reservation on your router), so the address keeps working.
 

@@ -412,8 +412,14 @@ enum Outcome { case published, skipped, failed }
 func publish(_ app: URL, _ game: Game, writer: CatalogWriter, force: Bool) async -> Outcome {
     let name = slug(game.title)
     let version = game.version ?? "1"
-    let archiveKey = "games/\(name)/\(name)-\(version).aar"
-    if !force, let existing = await writer.entry(for: game.id), existing.version == game.version {
+    let existing = await writer.entry(for: game.id)
+    let baseArchiveKey = "games/\(name)/\(name)-\(version).aar"
+    // A forced same-version correction must not overwrite bytes still referenced by the current
+    // catalog. Publish under a fresh key, switch the manifest, then delete the previous object.
+    let archiveKey = existing?.archive == baseArchiveKey
+        ? "games/\(name)/\(name)-\(version)-\(UUID().uuidString.lowercased()).aar"
+        : baseArchiveKey
+    if !force, let existing, existing.version == game.version {
         line("= \(game.title) \(version) is already in the store")
         return .skipped
     }

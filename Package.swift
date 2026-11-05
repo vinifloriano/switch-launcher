@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .executable(name: "SwitchLauncher", targets: ["SwitchLauncher"]),
         .executable(name: "store-publish", targets: ["store-publish"]),
+        .library(name: "HomeButtonShim", type: .dynamic, targets: ["HomeButtonShim"]),
     ],
     targets: [
         // Visual language: theme tokens, scaling, and reusable console-style components.
@@ -23,6 +24,15 @@ let package = Package(
             dependencies: ["DesignSystem", "LauncherCore", "InputKit", "SoundKit"]
         ),
         .executableTarget(name: "SwitchLauncher", dependencies: ["Features"]),
+        // Loaded into older nxnative game hosts so the foreground process releases HOME from
+        // macOS's system gesture; this lets the launcher's background GameController handler see it.
+        .target(
+            name: "HomeButtonShim",
+            linkerSettings: [
+                .linkedFramework("Foundation"),
+                .linkedFramework("GameController"),
+            ]
+        ),
         // Packages game apps and uploads them with a catalog to the store bucket.
         .executableTarget(name: "store-publish", dependencies: ["LauncherCore"], path: "Sources/StorePublish"),
         .testTarget(name: "LauncherCoreTests", dependencies: ["LauncherCore"]),
